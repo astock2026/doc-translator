@@ -1,0 +1,285 @@
+/* === Reset & Base === */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #f5f3ff 100%);
+    color: #1a1a2e;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.container {
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* === Header === */
+.app-header {
+    text-align: center;
+}
+
+.app-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1e3a5f;
+    letter-spacing: -0.02em;
+}
+
+.app-header .subtitle {
+    font-size: 1rem;
+    color: #5b6e8c;
+    margin-top: 0.25rem;
+}
+
+.app-header .description {
+    font-size: 0.85rem;
+    color: #7c8aa0;
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
+/* === Upload Zone === */
+.upload-zone {
+    background: #ffffff;
+    border: 2px dashed #c4d3e9;
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.upload-zone:hover,
+.upload-zone.drag-over {
+    border-color: #4a7cf7;
+    background: #f8faff;
+    box-shadow: 0 0 0 4px rgba(74, 124, 247, 0.1);
+}
+
+.upload-icon {
+    color: #7c8aa0;
+    margin-bottom: 1rem;
+}
+
+.upload-prompt {
+    font-size: 0.95rem;
+    color: #5b6e8c;
+    line-height: 1.6;
+}
+
+.upload-prompt strong {
+    color: #1e3a5f;
+}
+
+.browse-link {
+    color: #4a7cf7;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.file-limit {
+    font-size: 0.78rem;
+    color: #a0b0c8;
+    margin-top: 0.75rem;
+}
+
+/* === File Card === */
+.file-info {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e8edf5;
+}
+
+.file-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.file-icon {
+    color: #4a7cf7;
+    flex-shrink: 0;
+}
+
+.file-name {
+    flex: 1;
+    font-size: 0.9rem;
+    color: #1e3a5f;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* === Buttons === */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.4rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-primary {
+    background: #4a7cf7;
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background: #3a6ae0;
+}
+
+.btn-success {
+    background: #22c55e;
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.btn-success:hover {
+    background: #16a34a;
+}
+
+.btn-outline {
+    background: transparent;
+    color: #5b6e8c;
+    border: 1px solid #d0d7e5;
+}
+
+.btn-outline:hover {
+    background: #f0f4ff;
+    border-color: #4a7cf7;
+    color: #4a7cf7;
+}
+
+/* === Progress === */
+.progress-section {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 1.75rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e8edf5;
+}
+
+.progress-bar-wrapper {
+    height: 6px;
+    background: #e8edf5;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4a7cf7, #7c5cf7);
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.5s ease;
+}
+
+.progress-text {
+    font-size: 0.85rem;
+    color: #5b6e8c;
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+}
+
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.step {
+    font-size: 0.75rem;
+    color: #a0b0c8;
+    padding: 0.35rem 0.65rem;
+    border-radius: 6px;
+    background: #f5f7fb;
+    transition: all 0.3s ease;
+}
+
+.step.active {
+    color: #4a7cf7;
+    background: #eef3ff;
+    font-weight: 600;
+}
+
+.step.done {
+    color: #22c55e;
+    background: #ecfdf5;
+}
+
+/* === Result === */
+.result-section,
+.error-section {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e8edf5;
+    text-align: center;
+}
+
+.success-icon {
+    margin-bottom: 0.75rem;
+}
+
+.result-stats {
+    font-size: 0.85rem;
+    color: #5b6e8c;
+    margin: 0.5rem 0 1.25rem;
+}
+
+.result-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.error-card h3 {
+    color: #dc2626;
+    margin-bottom: 0.5rem;
+}
+
+.error-card p {
+    color: #5b6e8c;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+/* === Footer === */
+.app-footer {
+    text-align: center;
+}
+
+.app-footer p {
+    font-size: 0.75rem;
+    color: #a0b0c8;
+}
+
+/* === Utility === */
+.hidden {
+    display: none !important;
+}
