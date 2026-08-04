@@ -3,71 +3,103 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Translator — Deploy Guide</title>
+    <title>Document Translator — Chinese → English Bilingual DOCX</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #ffffff;
+            --card: #f8f9fa;
+            --border: #dee2e6;
+            --text: #212529;
+            --text-secondary: #6c757d;
+            --primary: #2563eb;
+            --radius: 12px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #f5f3ff 100%);
-            color: #1a1a2e; min-height: 100vh; display: flex; align-items: center;
-            justify-content: center; padding: 2rem 1rem;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .container { width: 100%; max-width: 640px; }
-        .card { background: #fff; border-radius: 16px; padding: 2.5rem; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #e8edf5; text-align: center; margin-bottom: 1.5rem; }
-        h1 { font-size: 1.8rem; font-weight: 700; color: #1e3a5f; margin-bottom: 0.5rem; }
-        .subtitle { color: #5b6e8c; margin-bottom: 1rem; }
-        .badge { display: inline-block; background: #eef3ff; color: #4a7cf7; font-size: 0.7rem; font-weight: 600;
-            padding: 0.2rem 0.6rem; border-radius: 4px; letter-spacing: 0.04em; }
-        .flow { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin: 1.5rem 0; flex-wrap: wrap; font-size: 0.85rem; font-weight: 600; }
-        .flow span { padding: 0.4rem 0.8rem; border-radius: 6px; }
-        .flow .s1 { background: #eef3ff; color: #4a7cf7; }
-        .flow .s2 { background: #fef3c7; color: #92400e; }
-        .flow .s3 { background: #ecfdf5; color: #16a34a; }
-        .flow .arr { color: #a0b0c8; font-size: 1.1rem; }
-
-        .info { text-align: left; background: #f8faff; border-radius: 10px; padding: 1.2rem; border: 1px solid #e0e8f5; }
-        .info h3 { font-size: 0.9rem; color: #1e3a5f; margin-bottom: 0.75rem; }
-        .info ul { padding-left: 1.2rem; }
-        .info li { font-size: 0.85rem; color: #5b6e8c; margin-bottom: 0.4rem; line-height: 1.5; }
-        .info li strong { color: #1e3a5f; }
+        .container { max-width: 560px; padding: 40px 24px; text-align: center; }
+        h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+        .subtitle { color: var(--text-secondary); font-size: 15px; margin-bottom: 32px; }
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 32px 24px;
+            text-align: left;
+        }
+        .card h3 { font-size: 16px; margin-bottom: 16px; }
+        .step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+        .step-num {
+            width: 28px; height: 28px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        .step-text { font-size: 14px; line-height: 1.5; }
+        .step-text strong { color: var(--primary); }
         .btn {
-            display: inline-block; padding: 0.75rem 2rem; background: #4a7cf7; color: #fff;
-            border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.95rem;
-            transition: background 0.15s; margin-top: 1rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 14px 36px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--primary);
+            color: white;
+            margin-top: 20px;
+            text-decoration: none;
         }
-        .btn:hover { background: #3a6ae0; }
-        .footer { font-size: 0.75rem; color: #a0b0c8; margin-top: 1.5rem; }
+        .btn:hover { background: #1d4ed8; }
+        .note {
+            margin-top: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="card">
-            <h1>&#x1F4C4; Document Translator</h1>
-            <p class="subtitle">Chinese &#x2192; English Bilingual .docx &mdash; Skill-Quality AI Translation</p>
-            <span class="badge">NO EXTERNAL TRANSLATION APIs</span>
+<div class="container">
+    <h1>📄 Document Translator</h1>
+    <p class="subtitle">Chinese → English bilingual DOCX<br>CMC/GMP pharmaceutical grade quality</p>
 
-            <div class="flow">
-                <span class="s1">&#x1F50D; 1. Extract</span>
-                <span class="arr">&#x2192;</span>
-                <span class="s2">&#x1F310; 2. Translate</span>
-                <span class="arr">&#x2192;</span>
-                <span class="s3">&#x1F4E5; 3. Insert</span>
-            </div>
-
-            <div class="info">
-                <h3>&#x1F680; Deploy to Render (Free Tier) &mdash; 5 minutes</h3>
-                <ul>
-                    <li><strong>Step 1:</strong> Upload .docx &rarr; download <code>content.json</code></li>
-                    <li><strong>Step 2:</strong> Get AI translation (using bilingual-docx-translate skill)</li>
-                    <li><strong>Step 3:</strong> Upload .json &rarr; download bilingual .docx</li>
-                </ul>
-                <p style="font-size:0.82rem;margin-top:0.75rem;color:#7c8aa0">
-                    To deploy: push <code>webapp/</code> to GitHub &rarr; connect to <a href="https://render.com">render.com</a> &rarr; Render auto-detects <code>render.yaml</code>.
-                    Times New Roman 10.5pt &middot; CMC/GMP glossary &middot; Merged cell safe.
-                </p>
-            </div>
+    <div class="card">
+        <h3>How it works</h3>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Upload your Chinese <strong>.docx</strong> file</div>
         </div>
-        <div class="footer">Zero external APIs. Translation handled by AI using bilingual-docx-translate skill.</div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">AI translates with <strong>CMC/GMP glossary</strong> — extract → LLM translate → verify → insert</div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Download your <strong>bilingual .docx</strong> with CMC compliance score</div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">English appears <strong>below Chinese in the same paragraph</strong> · Times New Roman 10.5pt</div>
+        </div>
     </div>
+
+    <a class="btn" href="https://render.com" target="_blank">🚀 Deploy on Render (Free)</a>
+    <p class="note">This app requires a Python backend. Deploy to Render with a free DeepSeek API key.<br>See deployment instructions in the repo.</p>
+</div>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Translator — Bilingual DOCX Translation</title>
+    <title>Document Translator — Chinese → English Bilingual DOCX</title>
     <style>
         :root {
             --bg: #ffffff;
@@ -19,10 +19,9 @@
             --warning-bg: #fef3c7;
             --danger: #dc2626;
             --danger-bg: #fee2e2;
-            --info: #0891b2;
-            --info-bg: #cffafe;
-            --radius: 8px;
-            --shadow: 0 1px 3px rgba(0,0,0,0.1);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -34,85 +33,45 @@
             min-height: 100vh;
         }
 
-        .container { max-width: 720px; margin: 0 auto; padding: 40px 20px; }
+        .container { max-width: 600px; margin: 0 auto; padding: 60px 20px 40px; }
 
         header {
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: 36px;
         }
         header h1 {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 700;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
         }
         header p {
             color: var(--text-secondary);
-            font-size: 15px;
-        }
-
-        /* Mode tabs */
-        .mode-tabs {
-            display: flex;
-            gap: 4px;
-            background: var(--card);
-            border-radius: var(--radius);
-            padding: 4px;
-            margin-bottom: 24px;
-        }
-        .mode-tab {
-            flex: 1;
-            padding: 10px 16px;
-            border: none;
-            background: transparent;
-            border-radius: 6px;
-            cursor: pointer;
             font-size: 14px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            transition: all 0.2s;
-            text-align: center;
-        }
-        .mode-tab.active {
-            background: var(--bg);
-            color: var(--primary);
-            box-shadow: var(--shadow);
-        }
-        .mode-tab:hover:not(.active) {
-            color: var(--text);
-        }
-        .mode-tab .badge {
-            display: inline-block;
-            background: var(--success-bg);
-            color: var(--success);
-            font-size: 10px;
-            padding: 1px 6px;
-            border-radius: 10px;
-            margin-left: 4px;
-            vertical-align: middle;
         }
 
         /* Upload area */
         .upload-area {
             border: 2px dashed var(--border);
             border-radius: var(--radius);
-            padding: 48px 24px;
+            padding: 56px 24px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
             background: var(--card);
+            margin-bottom: 0;
         }
         .upload-area:hover, .upload-area.dragover {
             border-color: var(--primary);
             background: #eff6ff;
         }
         .upload-area .icon {
-            font-size: 40px;
-            margin-bottom: 12px;
+            font-size: 44px;
+            margin-bottom: 14px;
         }
         .upload-area .title {
-            font-size: 16px;
+            font-size: 17px;
             font-weight: 600;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
         .upload-area .hint {
             font-size: 13px;
@@ -120,213 +79,173 @@
         }
         .upload-area input { display: none; }
 
-        /* File info */
-        .file-info {
+        /* File selected state */
+        .file-card {
             display: none;
             align-items: center;
-            gap: 12px;
-            padding: 12px 16px;
+            gap: 14px;
+            padding: 16px 20px;
             background: var(--card);
-            border-radius: var(--radius);
-            margin-top: 12px;
+            border-radius: var(--radius-sm);
+            margin-top: 0;
+            border: 1px solid var(--border);
         }
-        .file-info.visible { display: flex; }
-        .file-info .name {
-            flex: 1;
-            font-weight: 500;
+        .file-card.visible { display: flex; }
+        .file-card .file-icon { font-size: 28px; }
+        .file-card .file-details { flex: 1; min-width: 0; }
+        .file-card .name {
+            font-weight: 600;
             font-size: 14px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .file-info .size {
-            font-size: 13px;
+        .file-card .size {
+            font-size: 12px;
             color: var(--text-secondary);
         }
-        .file-info .remove {
+        .file-card .remove {
             background: none;
             border: none;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 20px;
             color: var(--text-secondary);
-            padding: 4px;
+            padding: 4px 8px;
+            border-radius: 4px;
         }
+        .file-card .remove:hover { background: #e5e7eb; }
 
-        /* Second upload (for insert mode) */
-        .upload-section {
+        /* Progress */
+        .progress-section {
+            display: none;
+            margin-top: 16px;
+        }
+        .progress-section.visible { display: block; }
+
+        .phase-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        .phase {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            font-size: 14px;
+            border-left: 3px solid var(--border);
+            color: var(--text-secondary);
+            transition: all 0.3s;
+        }
+        .phase.active {
+            border-left-color: var(--primary);
+            color: var(--text);
+            font-weight: 500;
+        }
+        .phase.done {
+            border-left-color: var(--success);
+            color: var(--success);
+        }
+        .phase .phase-icon {
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .phase .phase-label { flex: 1; }
+        .phase .phase-stat {
+            font-size: 12px;
+            color: var(--text-secondary);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .phase.active .phase-stat,
+        .phase.done .phase-stat { opacity: 1; }
+
+        /* Result card */
+        .result-card {
+            display: none;
+            margin-top: 24px;
+            background: var(--success-bg);
+            border: 1px solid #bbf7d0;
+            border-radius: var(--radius);
+            padding: 24px;
+            text-align: center;
+        }
+        .result-card.visible { display: block; }
+        .result-card h3 {
+            font-size: 18px;
+            color: var(--success);
             margin-bottom: 16px;
         }
-        .upload-section label {
-            display: block;
-            font-size: 14px;
+
+        /* Verification badge */
+        .verify-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
             font-weight: 600;
-            margin-bottom: 6px;
+            margin-bottom: 16px;
         }
+        .verify-pass { background: var(--success-bg); color: var(--success); }
+        .verify-review { background: var(--warning-bg); color: var(--warning); }
+        .verify-fail { background: var(--danger-bg); color: var(--danger); }
 
         /* Buttons */
         .btn {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 12px 24px;
+            padding: 14px 32px;
             border: none;
-            border-radius: var(--radius);
+            border-radius: var(--radius-sm);
             font-size: 15px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            width: 100%;
             justify-content: center;
+            text-decoration: none;
         }
         .btn-primary {
             background: var(--primary);
             color: white;
+            width: 100%;
         }
         .btn-primary:hover { background: var(--primary-hover); }
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn-outline {
+
+        .btn-restart {
             background: var(--bg);
-            color: var(--primary);
-            border: 2px solid var(--primary);
-        }
-        .btn-outline:hover { background: #eff6ff; }
-
-        .actions { margin-top: 16px; }
-
-        /* Progress */
-        .progress-container {
-            display: none;
-            margin-top: 16px;
-        }
-        .progress-container.visible { display: block; }
-        .progress-bar {
-            height: 6px;
-            background: var(--border);
-            border-radius: 3px;
-            overflow: hidden;
-            margin-bottom: 8px;
-        }
-        .progress-fill {
-            height: 100%;
-            background: var(--primary);
-            border-radius: 3px;
-            width: 0%;
-            transition: width 0.3s;
-        }
-        .progress-text {
-            font-size: 13px;
             color: var(--text-secondary);
-        }
-
-        /* Results */
-        .results {
-            display: none;
-            margin-top: 24px;
-        }
-        .results.visible { display: block; }
-
-        /* Verification report */
-        .verification-report {
-            background: var(--card);
-            border-radius: var(--radius);
-            padding: 20px;
-            margin-top: 16px;
-        }
-        .verification-header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        .score-circle {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            font-weight: 700;
-            flex-shrink: 0;
-        }
-        .score-pass { background: var(--success-bg); color: var(--success); }
-        .score-review { background: var(--warning-bg); color: var(--warning); }
-        .score-fail { background: var(--danger-bg); color: var(--danger); }
-        .verification-summary h4 {
-            font-size: 16px;
-            margin-bottom: 4px;
-        }
-        .verification-summary p {
+            border: 1px solid var(--border);
+            margin-top: 8px;
+            width: 100%;
             font-size: 13px;
-            color: var(--text-secondary);
+            font-weight: 500;
+            padding: 10px;
         }
+        .btn-restart:hover { background: var(--card); }
 
-        .issue-list {
-            margin-top: 16px;
-        }
-        .issue {
-            padding: 10px 12px;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            font-size: 13px;
-        }
-        .issue-warning { background: var(--warning-bg); }
-        .issue-info { background: var(--info-bg); }
-        .issue .term {
-            font-weight: 700;
-            color: inherit;
-        }
-        .issue .expected {
-            color: var(--success);
-        }
-        .issue .location {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-
-        /* Download */
-        .download-section {
-            display: none;
-            margin-top: 16px;
-            text-align: center;
-        }
-        .download-section.visible { display: block; }
-
-        /* Status indicator */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        .status-pass { background: var(--success-bg); color: var(--success); }
-        .status-review { background: var(--warning-bg); color: var(--warning); }
-        .status-fail { background: var(--danger-bg); color: var(--danger); }
-
-        /* Errors */
+        /* Error */
         .error-box {
             display: none;
-            padding: 12px 16px;
+            padding: 14px 18px;
             background: var(--danger-bg);
             color: var(--danger);
-            border-radius: var(--radius);
-            margin-top: 12px;
+            border-radius: var(--radius-sm);
+            margin-top: 16px;
             font-size: 14px;
             white-space: pre-wrap;
         }
         .error-box.visible { display: block; }
 
-        /* Responsive */
-        @media (max-width: 600px) {
-            .container { padding: 20px 12px; }
-            .mode-tab { font-size: 12px; padding: 8px 10px; }
+        /* Hide file card and upload area transitions */
+        .hidden { display: none !important; }
+
+        @media (max-width: 500px) {
+            .container { padding: 30px 12px 20px; }
+            .upload-area { padding: 40px 16px; }
         }
     </style>
 </head>
@@ -334,219 +253,111 @@
 <div class="container">
     <header>
         <h1>📄 Document Translator</h1>
-        <p>Chinese → English bilingual DOCX translation<br>CMC/GMP pharmaceutical grade quality</p>
+        <p>Chinese → English bilingual DOCX · CMC/GMP pharmaceutical grade</p>
     </header>
 
-    <!-- Mode selector -->
-    <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="auto" id="tab-auto">
-            ⚡ Auto Translate <span class="badge" id="llm-badge">LLM</span>
-        </button>
-        <button class="mode-tab" data-mode="manual" id="tab-manual">
-            🔄 Manual Two-Step
-        </button>
-        <button class="mode-tab" data-mode="verify" id="tab-verify">
-            🔍 Verify Only
-        </button>
-    </div>
-
-    <!-- Auto Translate Mode -->
-    <div id="panel-auto" class="mode-panel">
-        <div class="upload-area" id="upload-auto">
+    <!-- Upload -->
+    <div id="upload-section">
+        <div class="upload-area" id="upload-area">
             <div class="icon">📤</div>
             <div class="title">Upload your Chinese .docx file</div>
-            <div class="hint">One click — extract → LLM translate → CMC verify → insert</div>
-            <input type="file" accept=".docx" id="file-auto">
+            <div class="hint">Drag & drop or click to browse</div>
+            <input type="file" accept=".docx" id="file-input">
         </div>
-        <div class="file-info" id="file-info-auto">
-            <span class="name" id="file-name-auto"></span>
-            <span class="size" id="file-size-auto"></span>
-            <button class="remove" id="remove-auto">✕</button>
+        <div class="file-card" id="file-card">
+            <span class="file-icon">📄</span>
+            <div class="file-details">
+                <div class="name" id="file-name"></div>
+                <div class="size" id="file-size"></div>
+            </div>
+            <button class="remove" id="remove-file">✕</button>
         </div>
-        <div class="progress-container" id="progress-auto">
-            <div class="progress-bar"><div class="progress-fill" id="progress-fill-auto"></div></div>
-            <div class="progress-text" id="progress-text-auto"></div>
-        </div>
-        <div class="error-box" id="error-auto"></div>
     </div>
 
-    <!-- Manual Two-Step Mode -->
-    <div id="panel-manual" class="mode-panel" style="display:none">
-        <div class="upload-section">
-            <label>Step 1: Extract content from .docx</label>
-            <div class="upload-area" id="upload-extract">
-                <div class="icon">📥</div>
-                <div class="title">Upload .docx to extract Chinese text</div>
-                <div class="hint">Download content.json for translation</div>
-                <input type="file" accept=".docx" id="file-extract">
+    <!-- Progress phases -->
+    <div class="progress-section" id="progress-section">
+        <div class="phase-list">
+            <div class="phase" id="phase-extract">
+                <span class="phase-icon">⏳</span>
+                <span class="phase-label">Extracting Chinese text from document</span>
+                <span class="phase-stat" id="stat-extract"></span>
+            </div>
+            <div class="phase" id="phase-translate">
+                <span class="phase-icon">⏳</span>
+                <span class="phase-label">Translating via LLM with CMC/GMP glossary</span>
+                <span class="phase-stat" id="stat-translate"></span>
+            </div>
+            <div class="phase" id="phase-verify">
+                <span class="phase-icon">⏳</span>
+                <span class="phase-label">Verifying CMC/GMP terminology</span>
+                <span class="phase-stat" id="stat-verify"></span>
+            </div>
+            <div class="phase" id="phase-insert">
+                <span class="phase-icon">⏳</span>
+                <span class="phase-label">Inserting English into document</span>
+                <span class="phase-stat" id="stat-insert"></span>
             </div>
         </div>
-        <div class="file-info" id="file-info-extract">
-            <span class="name" id="file-name-extract"></span>
-            <span class="size" id="file-size-extract"></span>
-            <button class="remove" id="remove-extract">✕</button>
-        </div>
-
-        <div class="actions">
-            <button class="btn btn-primary" id="btn-extract" disabled>
-                ⬇ Extract content.json
-            </button>
-        </div>
-
-        <hr style="margin: 24px 0; border: none; border-top: 1px solid var(--border);">
-
-        <div class="upload-section">
-            <label>Step 2: Insert translations into .docx</label>
-            <div class="upload-area" id="upload-docx-insert">
-                <div class="icon">📄</div>
-                <div class="title">Upload original .docx</div>
-                <div class="hint">Same file as step 1</div>
-                <input type="file" accept=".docx" id="file-docx-insert">
-            </div>
-        </div>
-        <div class="file-info" id="file-info-docx-insert">
-            <span class="name" id="file-name-docx-insert"></span>
-            <span class="size" id="file-size-docx-insert"></span>
-            <button class="remove" id="remove-docx-insert">✕</button>
-        </div>
-
-        <div class="upload-section" style="margin-top: 12px;">
-            <label>Upload translations.json</label>
-            <div class="upload-area" id="upload-json-insert" style="padding: 24px;">
-                <div class="icon">📋</div>
-                <div class="title">Upload translations.json</div>
-                <div class="hint">Translated by AI with CMC/GMP glossary</div>
-                <input type="file" accept=".json" id="file-json-insert">
-            </div>
-        </div>
-        <div class="file-info" id="file-info-json-insert">
-            <span class="name" id="file-name-json-insert"></span>
-            <span class="size" id="file-size-json-insert"></span>
-            <button class="remove" id="remove-json-insert">✕</button>
-        </div>
-
-        <div class="actions">
-            <button class="btn btn-primary" id="btn-insert" disabled>
-                ⬇ Download Bilingual .docx
-            </button>
-        </div>
-        <div class="progress-container" id="progress-insert">
-            <div class="progress-bar"><div class="progress-fill" id="progress-fill-insert"></div></div>
-            <div class="progress-text" id="progress-text-insert"></div>
-        </div>
-        <div class="error-box" id="error-insert"></div>
     </div>
 
-    <!-- Verify Only Mode -->
-    <div id="panel-verify" class="mode-panel" style="display:none">
-        <div class="upload-area" id="upload-verify">
-            <div class="icon">🔍</div>
-            <div class="title">Upload translations.json to verify</div>
-            <div class="hint">Check CMC/GMP terminology compliance</div>
-            <input type="file" accept=".json" id="file-verify">
-        </div>
-        <div class="file-info" id="file-info-verify">
-            <span class="name" id="file-name-verify"></span>
-            <span class="size" id="file-size-verify"></span>
-            <button class="remove" id="remove-verify">✕</button>
-        </div>
-        <div class="actions">
-            <button class="btn btn-primary" id="btn-verify" disabled>
-                🔍 Verify CMC Terminology
-            </button>
-        </div>
-        <div class="error-box" id="error-verify"></div>
-    </div>
+    <!-- Error -->
+    <div class="error-box" id="error-box"></div>
 
-    <!-- Shared results -->
-    <div id="results" class="results">
-        <div id="verification-report" class="verification-report" style="display:none"></div>
-        <div id="download-section" class="download-section">
-            <a id="download-link" class="btn btn-primary" href="#" download>
-                ⬇ Download Bilingual .docx
-            </a>
-        </div>
+    <!-- Result -->
+    <div class="result-card" id="result-card">
+        <h3>✅ Translation Complete</h3>
+        <div id="verify-badge-container"></div>
+        <a id="download-btn" class="btn btn-primary" href="#" download>
+            ⬇ Download Bilingual .docx
+        </a>
+        <button class="btn btn-restart" id="btn-restart">
+            🔄 Translate Another Document
+        </button>
     </div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════
-// Mode switching
-// ═══════════════════════════════════════════════════════════════════════
-let currentMode = 'auto';
+const uploadArea = document.getElementById('upload-area');
+const fileInput = document.getElementById('file-input');
+const fileCard = document.getElementById('file-card');
+const fileName = document.getElementById('file-name');
+const fileSize = document.getElementById('file-size');
+const removeBtn = document.getElementById('remove-file');
+const progressSection = document.getElementById('progress-section');
+const errorBox = document.getElementById('error-box');
+const resultCard = document.getElementById('result-card');
+const uploadSection = document.getElementById('upload-section');
 
-document.querySelectorAll('.mode-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-        currentMode = tab.dataset.mode;
-        document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        document.querySelectorAll('.mode-panel').forEach(p => p.style.display = 'none');
-        document.getElementById('panel-' + currentMode).style.display = '';
-        resetResults();
-    });
+let currentFile = null;
+
+// ── File selection ──
+
+uploadArea.addEventListener('click', () => fileInput.click());
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+uploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        handleFileSelect(e.dataTransfer.files[0]);
+    }
 });
 
-function resetResults() {
-    document.getElementById('results').classList.remove('visible');
-    document.getElementById('verification-report').style.display = 'none';
-    document.getElementById('download-section').classList.remove('visible');
-}
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) handleFileSelect(fileInput.files[0]);
+});
 
-// ═══════════════════════════════════════════════════════════════════════
-// LLM availability
-// ═══════════════════════════════════════════════════════════════════════
-async function checkStatus() {
-    try {
-        const resp = await fetch('/api/status');
-        const status = await resp.json();
-        if (!status.llm_available) {
-            document.getElementById('llm-badge').textContent = 'OFF';
-            document.getElementById('llm-badge').style.background = 'var(--danger-bg)';
-            document.getElementById('llm-badge').style.color = 'var(--danger)';
-        }
-    } catch(e) {}
-}
-checkStatus();
+removeBtn.addEventListener('click', resetAll);
 
-// ═══════════════════════════════════════════════════════════════════════
-// File upload helpers
-// ═══════════════════════════════════════════════════════════════════════
-function setupFileUpload(uploadId, inputId, infoId, nameId, sizeId, removeId, btnId) {
-    const upload = document.getElementById(uploadId);
-    const input = document.getElementById(inputId);
-    const info = document.getElementById(infoId);
-    const nameEl = document.getElementById(nameId);
-    const sizeEl = document.getElementById(sizeId);
-    const removeBtn = document.getElementById(removeId);
-    const btn = btnId ? document.getElementById(btnId) : null;
-
-    upload.addEventListener('click', () => input.click());
-    upload.addEventListener('dragover', e => { e.preventDefault(); upload.classList.add('dragover'); });
-    upload.addEventListener('dragleave', () => upload.classList.remove('dragover'));
-    upload.addEventListener('drop', e => {
-        e.preventDefault();
-        upload.classList.remove('dragover');
-        if (e.dataTransfer.files.length) {
-            input.files = e.dataTransfer.files;
-            input.dispatchEvent(new Event('change'));
-        }
-    });
-
-    input.addEventListener('change', () => {
-        if (input.files.length) {
-            const f = input.files[0];
-            nameEl.textContent = f.name;
-            sizeEl.textContent = formatSize(f.size);
-            info.classList.add('visible');
-            if (btn) btn.disabled = false;
-        }
-    });
-
-    removeBtn.addEventListener('click', () => {
-        input.value = '';
-        info.classList.remove('visible');
-        if (btn) btn.disabled = true;
-    });
+function handleFileSelect(file) {
+    currentFile = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    uploadArea.classList.add('hidden');
+    fileCard.classList.add('visible');
+    // Auto-start translation
+    startTranslation();
 }
 
 function formatSize(bytes) {
@@ -555,324 +366,152 @@ function formatSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-function getFile(inputId) {
-    const input = document.getElementById(inputId);
-    return input.files.length ? input.files[0] : null;
-}
+// ── Phase helpers ──
 
-// Setup all file uploads
-setupFileUpload('upload-auto', 'file-auto', 'file-info-auto', 'file-name-auto', 'file-size-auto', 'remove-auto');
-
-setupFileUpload('upload-extract', 'file-extract', 'file-info-extract', 'file-name-extract', 'file-size-extract', 'remove-extract', 'btn-extract');
-
-setupFileUpload('upload-docx-insert', 'file-docx-insert', 'file-info-docx-insert', 'file-name-docx-insert', 'file-size-docx-insert', 'remove-docx-insert');
-setupFileUpload('upload-json-insert', 'file-json-insert', 'file-info-json-insert', 'file-name-json-insert', 'file-size-json-insert', 'remove-json-insert');
-
-// Both files needed for insert button
-function checkInsertReady() {
-    const docx = getFile('file-docx-insert');
-    const json = getFile('file-json-insert');
-    document.getElementById('btn-insert').disabled = !(docx && json);
-}
-['file-docx-insert', 'file-json-insert'].forEach(id => {
-    document.getElementById(id).addEventListener('change', checkInsertReady);
-});
-['remove-docx-insert', 'remove-json-insert'].forEach(id => {
-    document.getElementById(id).addEventListener('click', () => setTimeout(checkInsertReady, 100));
-});
-
-setupFileUpload('upload-verify', 'file-verify', 'file-info-verify', 'file-name-verify', 'file-size-verify', 'remove-verify', 'btn-verify');
-
-// ═══════════════════════════════════════════════════════════════════════
-// API calls
-// ═══════════════════════════════════════════════════════════════════════
-
-function showError(panelId, msg) {
-    const el = document.getElementById('error-' + panelId);
-    el.textContent = msg;
-    el.classList.add('visible');
-}
-
-function hideError(panelId) {
-    document.getElementById('error-' + panelId).classList.remove('visible');
-}
-
-function showProgress(panelId, visible) {
-    document.getElementById('progress-' + panelId).classList.toggle('visible', visible);
-}
-
-function setProgress(panelId, pct, text) {
-    document.getElementById('progress-fill-' + panelId).style.width = pct + '%';
-    document.getElementById('progress-text-' + panelId).textContent = text;
-}
-
-async function uploadFile(url, file, onProgress) {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    if (onProgress) {
-        onProgress(10, 'Uploading...');
+function setPhase(id, state, statText) {
+    const el = document.getElementById('phase-' + id);
+    const icon = el.querySelector('.phase-icon');
+    const stat = document.getElementById('stat-' + id);
+    el.classList.remove('active', 'done');
+    if (state === 'active') {
+        el.classList.add('active');
+        icon.textContent = '🔄';
+    } else if (state === 'done') {
+        el.classList.add('done');
+        icon.textContent = '✅';
     }
-    
-    const resp = await fetch(url, { method: 'POST', body: formData });
-    
-    if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.error || `Server error (${resp.status})`);
-    }
-    return resp;
+    if (statText) stat.textContent = statText;
 }
 
-// ── Auto Translate ──
+// ── Main translation flow ──
 
-document.getElementById('upload-auto').addEventListener('click', () => {
-    if (getFile('file-auto')) return;
-});
-document.getElementById('file-auto').addEventListener('change', async () => {
-    const file = getFile('file-auto');
-    if (!file) return;
+async function startTranslation() {
+    if (!currentFile) return;
     
-    hideError('auto');
-    resetResults();
-    showProgress('auto', true);
-    setProgress('auto', 5, 'Starting translation pipeline...');
+    // Reset UI
+    errorBox.classList.remove('visible');
+    resultCard.classList.remove('visible');
+    progressSection.classList.add('visible');
+    
+    // Reset all phases
+    ['extract', 'translate', 'verify', 'insert'].forEach(id => setPhase(id, ''));
     
     try {
-        setProgress('auto', 15, 'Phase 1/4: Extracting content...');
-        const extractResp = await uploadFile('/api/extract', file, (pct, text) => {
-            setProgress('auto', 10 + pct * 0.1, text);
-        });
-        const extractData = await extractResp.json();
-        const stats = extractData.stats;
-        setProgress('auto', 25, `Extracted ${stats.paragraphs} paragraphs, ${stats.tables} tables, ${stats.table_cells} cells`);
+        // Phase 1: Extract
+        setPhase('extract', 'active', 'Extracting...');
+        setPhase('translate', '');
+        setPhase('verify', '');
+        setPhase('insert', '');
         
-        setProgress('auto', 30, 'Phase 2/4: Translating via LLM with CMC/GMP glossary...');
-        const transResp = await fetch('/api/translate', {
-            method: 'POST',
-            body: (() => { const fd = new FormData(); fd.append('file', file); return fd; })(),
-        });
-        
-        const score = transResp.headers.get('X-Verification-Score');
-        const status = transResp.headers.get('X-Verification-Status');
-        
-        setProgress('auto', 90, 'Phase 4/4: Finalizing...');
-        
-        if (transResp.ok) {
-            const blob = await transResp.blob();
-            setProgress('auto', 100, 'Complete!');
-            
-            // Show download
-            const url = URL.createObjectURL(blob);
-            const link = document.getElementById('download-link');
-            link.href = url;
-            link.download = file.name.replace('.docx', '_Bilingual.docx');
-            document.getElementById('download-section').classList.add('visible');
-            document.getElementById('results').classList.add('visible');
-            
-            // Show verification score
-            if (score) {
-                showVerificationScore(parseInt(score), status);
-            }
-            
-            // Trigger download
-            link.click();
-        } else {
-            const err = await transResp.json().catch(() => ({}));
-            throw new Error(err.error || 'Translation failed');
-        }
-    } catch(e) {
-        showError('auto', e.message);
-        showProgress('auto', false);
-    }
-});
-
-// ── Manual Extract ──
-
-document.getElementById('btn-extract').addEventListener('click', async () => {
-    const file = getFile('file-extract');
-    if (!file) return;
-    
-    hideError('auto');
-    const btn = document.getElementById('btn-extract');
-    btn.disabled = true;
-    btn.textContent = 'Extracting...';
-    
-    try {
-        const resp = await uploadFile('/api/extract', file);
-        const data = await resp.json();
-        const blob = new Blob([JSON.stringify(data.content, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name.replace('.docx', '_content.json');
-        a.click();
-        URL.revokeObjectURL(url);
-        btn.textContent = '⬇ Downloaded!';
-        setTimeout(() => { btn.textContent = '⬇ Extract content.json'; btn.disabled = false; }, 2000);
-    } catch(e) {
-        showError('auto', e.message);
-        btn.textContent = '⬇ Extract content.json';
-        btn.disabled = false;
-    }
-});
-
-// ── Manual Insert ──
-
-document.getElementById('btn-insert').addEventListener('click', async () => {
-    const docxFile = getFile('file-docx-insert');
-    const jsonFile = getFile('file-json-insert');
-    if (!docxFile || !jsonFile) return;
-    
-    hideError('insert');
-    const btn = document.getElementById('btn-insert');
-    btn.disabled = true;
-    btn.textContent = 'Inserting...';
-    showProgress('insert', true);
-    setProgress('insert', 20, 'Processing...');
-    
-    try {
         const formData = new FormData();
-        formData.append('file', docxFile);
-        formData.append('translations', jsonFile);
+        formData.append('file', currentFile);
         
-        const resp = await fetch('/api/insert', { method: 'POST', body: formData });
+        // Call translate endpoint (does extract → translate → verify → insert internally)
+        // We ping extract first just for stats display
+        let statsP = null;
+        try {
+            const extractFd = new FormData();
+            extractFd.append('file', currentFile);
+            const extractResp = await fetch('/api/extract', { method: 'POST', body: extractFd });
+            if (extractResp.ok) {
+                const ed = await extractResp.json();
+                statsP = ed.stats;
+                setPhase('extract', 'done', `${ed.stats.paragraphs} par. · ${ed.stats.tables} tables · ${ed.stats.table_cells} cells`);
+            }
+        } catch(e) {
+            // Non-critical, continue with main pipeline
+        }
+        
+        if (!statsP) {
+            setPhase('extract', 'done', 'Done');
+        }
+        
+        // Phase 2-4: Full pipeline
+        setPhase('translate', 'active', 'Translating with CMC/GMP glossary...');
+        
+        const transFd = new FormData();
+        transFd.append('file', currentFile);
+        
+        const resp = await fetch('/api/translate', { method: 'POST', body: transFd });
+        
+        const score = resp.headers.get('X-Verification-Score');
+        const status = resp.headers.get('X-Verification-Status');
+        const statsH = resp.headers.get('X-Stats');
+        
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error || 'Insert failed');
+            throw new Error(err.error || `Server error (${resp.status})`);
         }
         
+        // Update phases
+        if (statsH) {
+            try {
+                const s = JSON.parse(statsH);
+                setPhase('translate', 'done', `${s.translated || '?'} segments`);
+                setPhase('verify', 'done', `Score: ${score || '?'}/100`);
+                setPhase('insert', 'done', `${s.inserted_paras || 0} par. · ${s.inserted_cells || 0} cells`);
+            } catch(e) {
+                setPhase('translate', 'done', 'Done');
+                setPhase('verify', 'done', score ? `Score: ${score}/100` : 'Done');
+                setPhase('insert', 'done', 'Done');
+            }
+        } else {
+            setPhase('translate', 'done', 'Done');
+            setPhase('verify', 'done', score ? `Score: ${score}/100` : 'Done');
+            setPhase('insert', 'done', 'Done');
+        }
+        
+        // Prepare download
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
-        const link = document.getElementById('download-link');
-        link.href = url;
-        link.download = docxFile.name.replace('.docx', '_Bilingual.docx');
-        document.getElementById('download-section').classList.add('visible');
-        document.getElementById('results').classList.add('visible');
+        const dl = document.getElementById('download-btn');
+        // Revoke old URL if exists
+        if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
+        dl.href = url;
+        dl.dataset.blobUrl = url;
+        dl.download = currentFile.name.replace(/\.docx$/i, '_Bilingual.docx');
         
-        setProgress('insert', 100, 'Complete!');
+        // Show verification badge
+        const verifyBadge = document.getElementById('verify-badge-container');
+        if (score && status) {
+            const s = parseInt(score);
+            const cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
+            const label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
+            verifyBadge.innerHTML = `<span class="verify-badge ${cls}">🔍 CMC/GMP Score: ${s}/100 — ${label}</span>`;
+        } else {
+            verifyBadge.innerHTML = '';
+        }
         
-        // Trigger download
-        link.click();
+        // Show result
+        progressSection.classList.remove('visible');
+        resultCard.classList.add('visible');
         
-        btn.textContent = '⬇ Downloaded!';
-        setTimeout(() => { btn.textContent = '⬇ Download Bilingual .docx'; btn.disabled = false; showProgress('insert', false); }, 2000);
+        // Auto-download
+        dl.click();
+        
     } catch(e) {
-        showError('insert', e.message);
-        btn.textContent = '⬇ Download Bilingual .docx';
-        btn.disabled = false;
-        showProgress('insert', false);
+        progressSection.classList.remove('visible');
+        errorBox.textContent = e.message;
+        errorBox.classList.add('visible');
     }
-});
-
-// ── Verify ──
-
-document.getElementById('btn-verify').addEventListener('click', async () => {
-    const file = getFile('file-verify');
-    if (!file) return;
-    
-    hideError('verify');
-    const btn = document.getElementById('btn-verify');
-    btn.disabled = true;
-    btn.textContent = 'Verifying...';
-    
-    try {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const resp = await fetch('/api/verify', { method: 'POST', body: formData });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.error || 'Verification failed');
-        }
-        
-        const data = await resp.json();
-        document.getElementById('results').classList.add('visible');
-        renderVerificationReport(data.report);
-        
-        btn.textContent = '🔍 Verify Again';
-        btn.disabled = false;
-    } catch(e) {
-        showError('verify', e.message);
-        btn.textContent = '🔍 Verify CMC Terminology';
-        btn.disabled = false;
-    }
-});
-
-// ═══════════════════════════════════════════════════════════════════════
-// Verification report rendering
-// ═══════════════════════════════════════════════════════════════════════
-
-function showVerificationScore(score, status) {
-    const html = buildScoreHTML(score, status, null, 0, 0);
-    const report = document.getElementById('verification-report');
-    report.innerHTML = html;
-    report.style.display = 'block';
 }
 
-function renderVerificationReport(report) {
-    const html = buildScoreHTML(
-        report.score, report.status,
-        report.summary, report.warnings, report.info
-    ) + buildIssuesHTML(report.issues, report.by_category);
-    
-    const el = document.getElementById('verification-report');
-    el.innerHTML = html;
-    el.style.display = 'block';
-}
+// ── Restart ──
 
-function buildScoreHTML(score, status, summary, warnings, info) {
-    const scoreClass = score >= 80 ? 'score-pass' : (score >= 60 ? 'score-review' : 'score-fail');
-    const badgeClass = status === 'PASS' ? 'status-pass' : (status === 'REVIEW' ? 'status-review' : 'status-fail');
-    
-    let html = `<div class="verification-header">
-        <div class="score-circle ${scoreClass}">${score}</div>
-        <div class="verification-summary">
-            <h4>CMC/GMP Compliance Score <span class="status-badge ${badgeClass}">${status}</span></h4>`;
-    
-    if (summary) {
-        html += `<p>${summary}</p>`;
-    }
-    if (warnings > 0 || info > 0) {
-        html += `<p style="margin-top:4px">${warnings} warnings, ${info} info</p>`;
-    }
-    html += `</div></div>`;
-    return html;
-}
+document.getElementById('btn-restart').addEventListener('click', resetAll);
 
-function buildIssuesHTML(issues, byCategory) {
-    if (!issues || issues.length === 0) {
-        return '<div style="text-align:center;padding:16px;color:var(--success);font-weight:600">✅ All CMC/GMP terminology is correct and consistent</div>';
-    }
-    
-    let html = '<div class="issue-list"><h5 style="margin-bottom:8px">Flagged Terms</h5>';
-    
-    // Group warnings first, then info
-    const sorted = [...issues].sort((a, b) => {
-        if (a.severity === 'warning' && b.severity !== 'warning') return -1;
-        if (a.severity !== 'warning' && b.severity === 'warning') return 1;
-        return 0;
-    });
-    
-    for (const issue of sorted.slice(0, 15)) {
-        const cls = issue.severity === 'warning' ? 'issue-warning' : 'issue-info';
-        const icon = issue.severity === 'warning' ? '⚠️' : 'ℹ️';
-        html += `<div class="issue ${cls}">
-            <div>${icon} <span class="term">${issue.chinese_term}</span> → expected <span class="expected">${issue.expected}</span></div>`;
-        if (issue.found_variants) {
-            html += `<div style="font-size:12px;margin-top:2px">Variants used: ${issue.found_variants.join(', ')}</div>`;
-        }
-        if (issue.note) {
-            html += `<div style="font-size:12px;margin-top:2px;color:var(--text-secondary)">${issue.note}</div>`;
-        }
-        html += `<div class="location">${issue.location} · ${issue.category}</div></div>`;
-    }
-    
-    if (issues.length > 15) {
-        html += `<div style="text-align:center;font-size:13px;color:var(--text-secondary);padding:8px">...and ${issues.length - 15} more issues</div>`;
-    }
-    
-    html += '</div>';
-    return html;
+function resetAll() {
+    currentFile = null;
+    fileInput.value = '';
+    uploadArea.classList.remove('hidden');
+    fileCard.classList.remove('visible');
+    progressSection.classList.remove('visible');
+    errorBox.classList.remove('visible');
+    resultCard.classList.remove('visible');
+    ['extract', 'translate', 'verify', 'insert'].forEach(id => setPhase(id, ''));
+    const dl = document.getElementById('download-btn');
+    if (dl.dataset.blobUrl) { URL.revokeObjectURL(dl.dataset.blobUrl); delete dl.dataset.blobUrl; }
+    dl.href = '#';
 }
 </script>
 </body>
