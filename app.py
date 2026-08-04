@@ -38,9 +38,10 @@ app.config["OUTPUT_FOLDER"] = str(Path(__file__).parent / "outputs")
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 
-# LLM config from environment
+# LLM config from environment (accepts LLM_API_URL or LLM_API_BASE)
+_api_url = os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE")
 LLM_CONFIG = {
-    "api_base": os.environ.get("LLM_API_BASE", "https://api.deepseek.com/v1"),
+    "api_base": _api_url or "https://api.deepseek.com/v1",
     "api_key": os.environ.get("LLM_API_KEY", ""),
     "model": os.environ.get("LLM_MODEL", "deepseek-chat"),
 }
