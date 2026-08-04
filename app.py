@@ -335,6 +335,11 @@ def translate():
         response.headers["X-Verification-Score"] = str(report["score"])
         response.headers["X-Verification-Status"] = report["status"]
         response.headers["X-Verification-Issues"] = str(report["issues_found"])
+        response.headers["X-Stats"] = json.dumps({
+            "paragraphs": para_count,
+            "table_cells": cell_count,
+            "translated": para_count + cell_count,
+        })
         return response
 
     except Exception as e:
