@@ -87,7 +87,7 @@ Each response must contain ONLY the translated text, nothing else."""
 
 def call_llm(prompt_text, api_base=None, api_key=None, model=None):
     """Call LLM API for a single translation."""
-    api_base = api_base or os.environ.get("LLM_API_BASE", "https://api.deepseek.com/v1")
+    api_base = api_base or os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE", "https://api.deepseek.com/v1")
     api_key = api_key or os.environ.get("LLM_API_KEY", "")
     model = model or os.environ.get("LLM_MODEL", "deepseek-chat")
 
