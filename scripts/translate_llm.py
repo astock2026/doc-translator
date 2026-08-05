@@ -270,19 +270,77 @@ def has_chinese(text):
     return any(ord(c) > 0x4e00 for c in text)
 
 
-def is_already_bilingual(text):
-    """
-    Check if text already contains substantial English mixed with Chinese.
-    Uses a word-length heuristic: if there are 3+ consecutive ASCII letters
-    AND Chinese characters, the text is likely already partially translated
-    (e.g. 'Doc. Title文件标题', 'Analytical Development (方法开发, AD)').
+def has_english(text):
+    """Check if text contains ASCII letters."""
+    if not text:
+        return False
+    return any(c.isalpha() and ord(c) < 128 for c in text)
 
-    This avoids false-positives on Chinese text with 2-letter abbreviations
-    like 'QA' in '负责向QA申请' — that still needs translation.
+
+def is_already_bilingual_v2(text):
+    """
+    Check if text already contains English translation alongside Chinese.
+
+    Returns True if the text is already bilingual (should skip translation).
+    Returns False if the text needs translation.
+
+    Uses multi-layer heuristics to distinguish genuinely bilingual text from
+    Chinese text that merely contains short English abbreviations:
+
+    1. Newline-separated bilingual:
+       If text has newlines and contains an English-only line AND a Chinese
+       line, it's already bilingual (EN translation on its own line).
+       e.g. "Equipment Qualification\n设备确认"
+
+    2. For single-line text, uses Chinese character ratio:
+       - CN ratio > 0.65 → predominantly Chinese → needs translation
+         e.g. "负责向QA申请" (QA is just an abbreviation)
+       - CN ratio < 0.40 → predominantly English → already bilingual
+         e.g. "Analytical Development (方法开发, AD)"
+       - CN ratio 0.40-0.65 → ambiguous zone:
+         * Short text (<= 40 chars) → likely bilingual label → skip
+           e.g. "Doc. Title 文件标题"
+         * Long text (> 40 chars) → likely needs translation
+           e.g. "使用范围适用于公司内部所有GMP文件的管理..."
     """
     if not text or not has_chinese(text):
         return False
-    return bool(re.search(r'[A-Za-z]{3,}', text))
+
+    # Layer 1: Newline-separated bilingual (most reliable signal)
+    if '\n' in text:
+        lines = text.split('\n')
+        has_en_line = any(
+            has_english(line) and not has_chinese(line)
+            for line in lines
+        )
+        has_cn_line = any(has_chinese(line) for line in lines)
+        if has_en_line and has_cn_line:
+            return True  # Already bilingual with EN/CN on separate lines
+
+    # Layer 2: CN character ratio for single-line text
+    cn_chars = sum(1 for c in text if ord(c) > 0x4e00)
+    en_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
+    meaningful = cn_chars + en_chars
+
+    if meaningful == 0:
+        return has_chinese(text)
+
+    cn_ratio = cn_chars / meaningful
+
+    # Predominantly Chinese → needs translation
+    if cn_ratio > 0.65:
+        return False
+
+    # Predominantly English → already bilingual
+    if cn_ratio < 0.40:
+        return True
+
+    # Ambiguous zone: use text length to decide
+    # Short texts are likely bilingual labels; long texts need translation
+    if len(text) > 40:
+        return False
+    else:
+        return True
 
 
 # ── Main translation pipeline ──────────────────────────────────────────
@@ -304,7 +362,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
         chn = item.get("text", "").strip()
         idx = item.get("index", -1)
         if chn and has_chinese(chn):
-            if is_already_bilingual(chn):
+            if is_already_bilingual_v2(chn):
                 skipped_bilingual += 1
                 continue
             para_items.append((idx, chn))
@@ -318,7 +376,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
                 ci = cell.get("cell_index", -1)
                 pi = cell.get("para_index", -1)
                 if chn and has_chinese(chn):
-                    if is_already_bilingual(chn):
+                    if is_already_bilingual_v2(chn):
                         skipped_bilingual += 1
                         continue
                     cell_items.append((ti, ri, ci, pi, chn))
