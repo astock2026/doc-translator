@@ -6,6 +6,7 @@ duplicates when the original document already has bilingual EN/CH labels).
 """
 import json
 import sys
+import re
 from lxml import etree
 import docx
 from docx.oxml.ns import qn
@@ -23,6 +24,17 @@ def has_english(text):
     if not text:
         return False
     return any(c.isalpha() and ord(c) < 128 for c in text)
+
+
+def is_already_bilingual(text):
+    """
+    Check if text already contains substantial English mixed with Chinese.
+    Uses word-length heuristic: 3+ consecutive ASCII letters + Chinese = already bilingual.
+    Avoids false-positives on Chinese text with 2-letter abbreviations like 'QA'.
+    """
+    if not text or not has_chinese(text):
+        return False
+    return bool(re.search(r'[A-Za-z]{3,}', text))
 
 
 def _safe_para_text(para):
@@ -166,14 +178,18 @@ def insert_translations_safe(input_path, translations_path, output_path):
     for i, p_elem in enumerate(paragraph_elements):
         if i in para_translations:
             eng_text = para_translations[i]
+            # Skip if paragraph element already contains mixed EN+CH (already bilingual)
+            all_text = "".join(
+                t.text or "" for t in p_elem.findall(f".//{qn('w:t')}")
+            ).strip()
+            if is_already_bilingual(all_text):
+                para_skipped += 1
+                continue
             # Skip if translation text already appears in paragraph
             if translation_already_in_paragraph(p_elem, eng_text):
                 para_skipped += 1
                 continue
-            existing_text = "".join(
-                t.text or "" for t in p_elem.findall(f".//{qn('w:t')}")
-            ).strip()
-            for elem in make_english_run(eng_text, is_first=(not existing_text)):
+            for elem in make_english_run(eng_text, is_first=(not all_text)):
                 p_elem.append(elem)
             inserted += 1
 
@@ -195,13 +211,21 @@ def insert_translations_safe(input_path, translations_path, output_path):
                 continue
             cell = row.cells[ci]
             if pi < len(cell.paragraphs):
+                target_p = cell.paragraphs[pi]
+                target_elem = target_p._element
+                # Get full text of target paragraph for already-bilingual check
+                target_text = "".join(
+                    t.text or "" for t in target_elem.findall(f".//{qn('w:t')}")
+                ).strip()
+                # Skip if paragraph already has mixed EN words + CH (already bilingual)
+                if is_already_bilingual(target_text):
+                    skipped += 1
+                    continue
                 # Skip if this cell already has English text above the Chinese
                 # (original document is already bilingual in this cell)
                 if cell_has_existing_english_above(cell, pi):
                     skipped += 1
                     continue
-                target_p = cell.paragraphs[pi]
-                target_elem = target_p._element
                 # Skip if translation already appears in this paragraph
                 # (original already has bilingual EN+CH in same paragraph)
                 if translation_already_in_paragraph(target_elem, eng_text):

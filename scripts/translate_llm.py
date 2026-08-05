@@ -270,6 +270,21 @@ def has_chinese(text):
     return any(ord(c) > 0x4e00 for c in text)
 
 
+def is_already_bilingual(text):
+    """
+    Check if text already contains substantial English mixed with Chinese.
+    Uses a word-length heuristic: if there are 3+ consecutive ASCII letters
+    AND Chinese characters, the text is likely already partially translated
+    (e.g. 'Doc. Title文件标题', 'Analytical Development (方法开发, AD)').
+
+    This avoids false-positives on Chinese text with 2-letter abbreviations
+    like 'QA' in '负责向QA申请' — that still needs translation.
+    """
+    if not text or not has_chinese(text):
+        return False
+    return bool(re.search(r'[A-Za-z]{3,}', text))
+
+
 # ── Main translation pipeline ──────────────────────────────────────────
 
 def translate_content(content_path, output_path=None, api_base=None, api_key=None, model=None, provider=None):
@@ -283,10 +298,15 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
     para_items = []   # [(index, chn_text)]
     cell_items = []   # [(table_idx, row_idx, cell_idx, para_idx, chn_text)]
 
+    skipped_bilingual = 0
+
     for item in content.get("paragraphs", []):
         chn = item.get("text", "").strip()
         idx = item.get("index", -1)
         if chn and has_chinese(chn):
+            if is_already_bilingual(chn):
+                skipped_bilingual += 1
+                continue
             para_items.append((idx, chn))
 
     for table in content.get("tables", []):
@@ -298,11 +318,15 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
                 ci = cell.get("cell_index", -1)
                 pi = cell.get("para_index", -1)
                 if chn and has_chinese(chn):
+                    if is_already_bilingual(chn):
+                        skipped_bilingual += 1
+                        continue
                     cell_items.append((ti, ri, ci, pi, chn))
 
     all_texts = [(t[1], True) for t in para_items] + [(t[4], False) for t in cell_items]
     total = len(all_texts)
-    print(f"Total segments to translate: {total} ({len(para_items)} paragraphs + {len(cell_items)} cells)")
+    print(f"Total segments to translate: {total} ({len(para_items)} paragraphs + {len(cell_items)} cells)"
+          f" — skipped {skipped_bilingual} already-bilingual")
 
     # ── Step 2: Batch and translate ──
     translations = {}  # position -> translation
