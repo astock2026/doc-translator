@@ -3,25 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Translator — Chinese → English Bilingual DOCX</title>
+    <title>DocTranslator — Chinese → English Bilingual DOCX</title>
     <style>
         :root {
-            --bg: #ffffff;
-            --card: #f8f9fa;
-            --border: #dee2e6;
-            --text: #212529;
-            --text-secondary: #6c757d;
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
+            --blue-600: #2563eb;
+            --blue-700: #1d4ed8;
+            --blue-50: #eff6ff;
+            --blue-100: #dbeafe;
             --success: #16a34a;
             --success-bg: #dcfce7;
             --warning: #d97706;
             --warning-bg: #fef3c7;
             --danger: #dc2626;
             --danger-bg: #fee2e2;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-tertiary: #9ca3af;
+            --border: #e5e7eb;
+            --border-light: #f3f4f6;
+            --bg: #ffffff;
+            --bg-secondary: #f9fafb;
             --radius: 12px;
             --radius-sm: 8px;
-            --shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -33,49 +36,152 @@
             min-height: 100vh;
         }
 
-        .container { max-width: 600px; margin: 0 auto; padding: 60px 20px 40px; }
+        .container { max-width: 640px; margin: 0 auto; padding: 60px 20px 40px; }
 
-        header {
-            text-align: center;
-            margin-bottom: 36px;
+        /* Nav */
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 48px;
         }
-        header h1 {
-            font-size: 26px;
-            font-weight: 700;
-            margin-bottom: 6px;
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            color: var(--text);
         }
-        header p {
+        .nav-brand-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            background: var(--blue-600);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .nav-brand-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 13px;
+        }
+        .nav-links a {
             color: var(--text-secondary);
+            text-decoration: none;
+        }
+        .nav-links a:hover { color: var(--text); }
+        .btn-signin {
+            background: var(--bg);
+            color: var(--text);
+            border: 0.5px solid #d1d5db;
+            border-radius: 20px;
+            padding: 5px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-signin:hover { background: var(--bg-secondary); }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .hero-badge {
+            display: inline-block;
+            background: var(--blue-50);
+            color: var(--blue-600);
+            font-size: 11px;
+            font-weight: 500;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+        }
+        .hero h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
+        }
+        .hero p {
             font-size: 14px;
+            color: var(--text-secondary);
+            max-width: 440px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Main card */
+        .main-card {
+            background: var(--bg);
+            border: 0.5px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+        .lang-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
+        }
+        .lang-badge .dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--success);
         }
 
         /* Upload area */
         .upload-area {
-            border: 2px dashed var(--border);
+            border: 1.5px dashed #d1d5db;
             border-radius: var(--radius);
-            padding: 56px 24px;
+            padding: 48px 24px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
-            background: var(--card);
-            margin-bottom: 0;
+            background: var(--bg-secondary);
         }
         .upload-area:hover, .upload-area.dragover {
-            border-color: var(--primary);
-            background: #eff6ff;
+            border-color: var(--blue-600);
+            background: var(--blue-50);
         }
-        .upload-area .icon {
-            font-size: 44px;
-            margin-bottom: 14px;
+        .upload-area .upload-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            background: var(--blue-100);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
         }
-        .upload-area .title {
-            font-size: 17px;
+        .upload-area .upload-icon svg {
+            width: 22px;
+            height: 22px;
+        }
+        .upload-area .upload-title {
+            font-size: 15px;
             font-weight: 600;
-            margin-bottom: 6px;
+            margin-bottom: 4px;
         }
-        .upload-area .hint {
+        .upload-area .upload-hint {
             font-size: 13px;
-            color: var(--text-secondary);
+            color: var(--text-tertiary);
         }
         .upload-area input { display: none; }
 
@@ -83,37 +189,46 @@
         .file-card {
             display: none;
             align-items: center;
-            gap: 14px;
-            padding: 16px 20px;
-            background: var(--card);
+            gap: 12px;
+            padding: 14px 16px;
+            background: var(--bg-secondary);
             border-radius: var(--radius-sm);
-            margin-top: 0;
-            border: 1px solid var(--border);
+            border: 0.5px solid var(--border);
         }
         .file-card.visible { display: flex; }
-        .file-card .file-icon { font-size: 28px; }
-        .file-card .file-details { flex: 1; min-width: 0; }
-        .file-card .name {
+        .file-card .fc-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: var(--blue-100);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .file-card .fc-details { flex: 1; min-width: 0; }
+        .file-card .fc-name {
             font-weight: 600;
             font-size: 14px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .file-card .size {
+        .file-card .fc-size {
             font-size: 12px;
             color: var(--text-secondary);
         }
-        .file-card .remove {
+        .file-card .fc-remove {
             background: none;
             border: none;
             cursor: pointer;
-            font-size: 20px;
+            font-size: 18px;
             color: var(--text-secondary);
             padding: 4px 8px;
             border-radius: 4px;
+            flex-shrink: 0;
         }
-        .file-card .remove:hover { background: #e5e7eb; }
+        .file-card .fc-remove:hover { background: var(--border); }
 
         /* Progress */
         .progress-section {
@@ -126,21 +241,27 @@
             display: flex;
             flex-direction: column;
             gap: 0;
+            border: 0.5px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
         }
         .phase {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 14px;
-            font-size: 14px;
-            border-left: 3px solid var(--border);
+            padding: 13px 16px;
+            font-size: 13px;
+            border-left: 3px solid transparent;
             color: var(--text-secondary);
             transition: all 0.3s;
+            background: var(--bg);
         }
+        .phase + .phase { border-top: 0.5px solid var(--border-light); }
         .phase.active {
-            border-left-color: var(--primary);
+            border-left-color: var(--blue-600);
             color: var(--text);
             font-weight: 500;
+            background: var(--blue-50);
         }
         .phase.done {
             border-left-color: var(--success);
@@ -160,11 +281,12 @@
         }
         .phase.active .phase-stat,
         .phase.done .phase-stat { opacity: 1; }
+        .phase.done .phase-stat { color: var(--success); }
 
         /* Result card */
         .result-card {
             display: none;
-            margin-top: 24px;
+            margin-top: 20px;
             background: var(--success-bg);
             border: 1px solid #bbf7d0;
             border-radius: var(--radius);
@@ -174,6 +296,7 @@
         .result-card.visible { display: block; }
         .result-card h3 {
             font-size: 18px;
+            font-weight: 600;
             color: var(--success);
             margin-bottom: 16px;
         }
@@ -197,23 +320,23 @@
         .btn {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
-            padding: 14px 32px;
+            padding: 13px 28px;
             border: none;
             border-radius: var(--radius-sm);
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
-            justify-content: center;
             text-decoration: none;
         }
         .btn-primary {
-            background: var(--primary);
+            background: var(--blue-600);
             color: white;
             width: 100%;
         }
-        .btn-primary:hover { background: var(--primary-hover); }
+        .btn-primary:hover { background: var(--blue-700); }
 
         .btn-restart {
             background: var(--bg);
@@ -225,7 +348,7 @@
             font-weight: 500;
             padding: 10px;
         }
-        .btn-restart:hover { background: var(--card); }
+        .btn-restart:hover { background: var(--bg-secondary); }
 
         /* Error */
         .error-box {
@@ -240,37 +363,85 @@
         }
         .error-box.visible { display: block; }
 
-        /* Hide file card and upload area transitions */
+        /* Footer */
+        .footer {
+            border-top: 0.5px solid var(--border);
+            padding-top: 16px;
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            justify-content: center;
+        }
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+        }
+        .footer a:hover { color: var(--text); }
+
         .hidden { display: none !important; }
 
         @media (max-width: 500px) {
-            .container { padding: 30px 12px 20px; }
-            .upload-area { padding: 40px 16px; }
+            .container { padding: 30px 14px 24px; }
+            .hero h1 { font-size: 20px; }
+            .main-card { padding: 18px; }
+            .upload-area { padding: 36px 16px; }
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <header>
-        <h1>📄 Document Translator</h1>
-        <p>Chinese → English bilingual DOCX · CMC/GMP pharmaceutical grade</p>
-    </header>
+    <!-- Nav -->
+    <nav class="nav">
+        <div class="nav-brand">
+            <div class="nav-brand-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+            </div>
+            <span>DocTranslator</span>
+        </div>
+        <div class="nav-links">
+            <a href="#pricing">Pricing</a>
+            <a href="#signin" class="btn-signin">Sign in</a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <div class="hero">
+        <div class="hero-badge">CMC · GMP · Regulatory</div>
+        <h1>Bilingual document translation</h1>
+        <p>Chinese SOPs and GMP documents translated to natural professional English - with original text preserved.</p>
+    </div>
 
     <!-- Upload -->
-    <div id="upload-section">
+    <div class="main-card" id="upload-section">
+        <div class="lang-badge">
+            <span class="dot"></span>
+            Chinese → English
+        </div>
         <div class="upload-area" id="upload-area">
-            <div class="icon">📤</div>
-            <div class="title">Upload your Chinese .docx file</div>
-            <div class="hint">Drag & drop or click to browse</div>
+            <div class="upload-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+            </div>
+            <div class="upload-title">Drop .docx file here</div>
+            <div class="upload-hint">Translation starts automatically — up to 50 MB</div>
             <input type="file" accept=".docx" id="file-input">
         </div>
         <div class="file-card" id="file-card">
-            <span class="file-icon">📄</span>
-            <div class="file-details">
-                <div class="name" id="file-name"></div>
-                <div class="size" id="file-size"></div>
+            <div class="fc-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             </div>
-            <button class="remove" id="remove-file">✕</button>
+            <div class="fc-details">
+                <div class="fc-name" id="file-name"></div>
+                <div class="fc-size" id="file-size"></div>
+            </div>
+            <button class="fc-remove" id="remove-file">&times;</button>
         </div>
     </div>
 
@@ -305,15 +476,23 @@
 
     <!-- Result -->
     <div class="result-card" id="result-card">
-        <h3>✅ Translation Complete</h3>
+        <h3>Translation complete</h3>
         <div id="verify-badge-container"></div>
         <a id="download-btn" class="btn btn-primary" href="#" download>
-            ⬇ Download Bilingual .docx
+            Download bilingual .docx
         </a>
         <button class="btn btn-restart" id="btn-restart">
-            🔄 Translate Another Document
+            Translate another document
         </button>
     </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <a href="#changelog">Changelog</a>
+        <a href="#status">Status</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#contact">Contact</a>
+    </footer>
 </div>
 
 <script>
@@ -329,8 +508,6 @@ const resultCard = document.getElementById('result-card');
 const uploadSection = document.getElementById('upload-section');
 
 let currentFile = null;
-
-// ── File selection ──
 
 uploadArea.addEventListener('click', () => fileInput.click());
 uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
@@ -356,7 +533,6 @@ function handleFileSelect(file) {
     fileSize.textContent = formatSize(file.size);
     uploadArea.classList.add('hidden');
     fileCard.classList.add('visible');
-    // Auto-start translation
     startTranslation();
 }
 
@@ -366,8 +542,6 @@ function formatSize(bytes) {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
-// ── Phase helpers ──
-
 function setPhase(id, state, statText) {
     const el = document.getElementById('phase-' + id);
     const icon = el.querySelector('.phase-icon');
@@ -375,39 +549,32 @@ function setPhase(id, state, statText) {
     el.classList.remove('active', 'done');
     if (state === 'active') {
         el.classList.add('active');
-        icon.textContent = '🔄';
+        icon.textContent = '\u{1F504}';
     } else if (state === 'done') {
         el.classList.add('done');
-        icon.textContent = '✅';
+        icon.textContent = '\u{2705}';
     }
     if (statText) stat.textContent = statText;
 }
 
-// ── Main translation flow ──
-
 async function startTranslation() {
     if (!currentFile) return;
-    
-    // Reset UI
+
     errorBox.classList.remove('visible');
     resultCard.classList.remove('visible');
     progressSection.classList.add('visible');
-    
-    // Reset all phases
+
     ['extract', 'translate', 'verify', 'insert'].forEach(id => setPhase(id, ''));
-    
+
     try {
-        // Phase 1: Extract
         setPhase('extract', 'active', 'Extracting...');
         setPhase('translate', '');
         setPhase('verify', '');
         setPhase('insert', '');
-        
+
         const formData = new FormData();
         formData.append('file', currentFile);
-        
-        // Call translate endpoint (does extract → translate → verify → insert internally)
-        // We ping extract first just for stats display
+
         let statsP = null;
         try {
             const extractFd = new FormData();
@@ -416,40 +583,36 @@ async function startTranslation() {
             if (extractResp.ok) {
                 const ed = await extractResp.json();
                 statsP = ed.stats;
-                setPhase('extract', 'done', `${ed.stats.paragraphs} par. · ${ed.stats.tables} tables · ${ed.stats.table_cells} cells`);
+                setPhase('extract', 'done', `${ed.stats.paragraphs} par. \u00b7 ${ed.stats.tables} tables \u00b7 ${ed.stats.table_cells} cells`);
             }
-        } catch(e) {
-            // Non-critical, continue with main pipeline
-        }
-        
+        } catch(e) {}
+
         if (!statsP) {
             setPhase('extract', 'done', 'Done');
         }
-        
-        // Phase 2-4: Full pipeline
+
         setPhase('translate', 'active', 'Translating with CMC/GMP glossary...');
-        
+
         const transFd = new FormData();
         transFd.append('file', currentFile);
-        
+
         const resp = await fetch('/api/translate', { method: 'POST', body: transFd });
-        
+
         const score = resp.headers.get('X-Verification-Score');
         const status = resp.headers.get('X-Verification-Status');
         const statsH = resp.headers.get('X-Stats');
-        
+
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.error || `Server error (${resp.status})`);
         }
-        
-        // Update phases
+
         if (statsH) {
             try {
                 const s = JSON.parse(statsH);
                 setPhase('translate', 'done', `${s.translated || '?'} segments`);
                 setPhase('verify', 'done', `Score: ${score || '?'}/100`);
-                setPhase('insert', 'done', `${s.inserted_paras || 0} par. · ${s.inserted_cells || 0} cells`);
+                setPhase('insert', 'done', `${s.inserted_paras || 0} par. \u00b7 ${s.inserted_cells || 0} cells`);
             } catch(e) {
                 setPhase('translate', 'done', 'Done');
                 setPhase('verify', 'done', score ? `Score: ${score}/100` : 'Done');
@@ -460,43 +623,36 @@ async function startTranslation() {
             setPhase('verify', 'done', score ? `Score: ${score}/100` : 'Done');
             setPhase('insert', 'done', 'Done');
         }
-        
-        // Prepare download
+
         const blob = await resp.blob();
         const url = URL.createObjectURL(blob);
         const dl = document.getElementById('download-btn');
-        // Revoke old URL if exists
         if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
         dl.href = url;
         dl.dataset.blobUrl = url;
         dl.download = currentFile.name.replace(/\.docx$/i, '_Bilingual.docx');
-        
-        // Show verification badge
+
         const verifyBadge = document.getElementById('verify-badge-container');
         if (score && status) {
             const s = parseInt(score);
             const cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
             const label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
-            verifyBadge.innerHTML = `<span class="verify-badge ${cls}">🔍 CMC/GMP Score: ${s}/100 — ${label}</span>`;
+            verifyBadge.innerHTML = `<span class="verify-badge ${cls}">CMC/GMP Score: ${s}/100 \u2014 ${label}</span>`;
         } else {
             verifyBadge.innerHTML = '';
         }
-        
-        // Show result
+
         progressSection.classList.remove('visible');
         resultCard.classList.add('visible');
-        
-        // Auto-download
+
         dl.click();
-        
+
     } catch(e) {
         progressSection.classList.remove('visible');
         errorBox.textContent = e.message;
         errorBox.classList.add('visible');
     }
 }
-
-// ── Restart ──
 
 document.getElementById('btn-restart').addEventListener('click', resetAll);
 
