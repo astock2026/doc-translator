@@ -162,9 +162,18 @@ def insert_translations_safe(input_path, translations_path, output_path):
     body = doc.element.body
     paragraph_elements = body.findall(qn("w:p"))
     inserted = 0
+    para_skipped = 0
     for i, p_elem in enumerate(paragraph_elements):
         if i in para_translations:
             eng_text = para_translations[i]
+            # Skip if paragraph is already bilingual (EN + CH in same para)
+            if paragraph_is_already_bilingual(p_elem):
+                para_skipped += 1
+                continue
+            # Skip if translation text already appears in paragraph
+            if translation_already_in_paragraph(p_elem, eng_text):
+                para_skipped += 1
+                continue
             existing_text = "".join(
                 t.text or "" for t in p_elem.findall(f".//{qn('w:t')}")
             ).strip()
@@ -220,7 +229,7 @@ def insert_translations_safe(input_path, translations_path, output_path):
 
     out = output_path or input_path
     doc.save(out)
-    print(f"Inserted {inserted} paragraph translations, "
+    print(f"Inserted {inserted} paragraph translations (skipped {para_skipped}), "
           f"{table_inserted} table cell translations "
           f"(skipped {skipped} already-bilingual cells) into {out}")
     return out
