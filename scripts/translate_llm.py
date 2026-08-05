@@ -16,7 +16,7 @@ OpenAI-compatible configuration:
 
 Gemini configuration:
     LLM_API_KEY     — Google AI API key (required)
-    LLM_MODEL       — Model name (default: gemini-2.5-flash)
+    LLM_MODEL       — Model name (default: gemini-3.6-flash)
 
 Usage:
     python translate_llm.py <content.json> [--output translations.json]
@@ -248,7 +248,7 @@ def call_llm_batch(texts, api_base=None, api_key=None, model=None, provider=None
 
     if provider == "gemini":
         api_key = api_key or os.environ.get("LLM_API_KEY", "")
-        model = model or os.environ.get("LLM_MODEL", "gemini-2.5-flash")
+        model = model or os.environ.get("LLM_MODEL", "gemini-3.6-flash")
         if not api_key:
             raise RuntimeError("LLM_API_KEY is required. Get a free key at https://aistudio.google.com/apikey")
         return _call_gemini_batch(texts, api_key, model)
