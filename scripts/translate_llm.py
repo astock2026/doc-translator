@@ -261,6 +261,15 @@ def call_llm_batch(texts, api_base=None, api_key=None, model=None, provider=None
         return _call_openai_batch(texts, api_base, api_key, model)
 
 
+# ── Helpers ────────────────────────────────────────────────────────────
+
+def has_chinese(text):
+    """Check if text contains any Chinese characters."""
+    if not text:
+        return False
+    return any(ord(c) > 0x4e00 for c in text)
+
+
 # ── Main translation pipeline ──────────────────────────────────────────
 
 def translate_content(content_path, output_path=None, api_base=None, api_key=None, model=None, provider=None):
@@ -277,7 +286,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
     for item in content.get("paragraphs", []):
         chn = item.get("text", "").strip()
         idx = item.get("index", -1)
-        if chn:
+        if chn and has_chinese(chn):
             para_items.append((idx, chn))
 
     for table in content.get("tables", []):
@@ -288,7 +297,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
                 chn = cell.get("text", "").strip()
                 ci = cell.get("cell_index", -1)
                 pi = cell.get("para_index", -1)
-                if chn:
+                if chn and has_chinese(chn):
                     cell_items.append((ti, ri, ci, pi, chn))
 
     all_texts = [(t[1], True) for t in para_items] + [(t[4], False) for t in cell_items]
