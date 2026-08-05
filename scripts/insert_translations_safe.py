@@ -6,6 +6,7 @@ duplicates when the original document already has bilingual EN/CH labels).
 """
 import json
 import sys
+import re
 from lxml import etree
 import docx
 from docx.oxml.ns import qn
@@ -25,36 +26,57 @@ def has_english(text):
     return any(c.isalpha() and ord(c) < 128 for c in text)
 
 
-def is_already_bilingual_v2(text):
+def _has_natural_english_sentence(text):
+    """Check if text contains natural English sentence structure (function words)."""
+    func_words = [
+        r'\bthe\b', r'\bis\b', r'\bare\b', r'\bwas\b', r'\bwere\b',
+        r'\bwill\b', r'\bshall\b', r'\bshould\b', r'\bmust\b', r'\bfor\b',
+        r'\bwith\b', r'\band\b', r'\bor\b', r'\bof\b', r'\bto\b', r'\bin\b',
+        r'\bon\b', r'\bat\b', r'\bby\b', r'\bfrom\b', r'\bthis\b', r'\bthat\b',
+        r'\ba\b', r'\ban\b', r'\bhas\b', r'\bhave\b', r'\bit\b', r'\bnot\b',
+        r'\bif\b', r'\bbut\b', r'\bany\b', r'\beach\b', r'\ball\b', r'\btheir\b',
+        r'\bthey\b', r'\bwe\b', r'\bwhich\b', r'\bwhen\b', r'\bwhere\b',
+    ]
+    text_lower = text.lower()
+    count = sum(1 for p in func_words if re.search(p, text_lower))
+    return count >= 2
+
+
+def _has_chinese_sentence_markers(text):
+    """Check if Chinese portion has grammatical markers of a sentence (not just a label)."""
+    cn_chars = ''.join(c for c in text if ord(c) > 0x4e00)
+    if len(cn_chars) < 3:
+        return False  # Single word like "目的" — characters are lexical, not grammatical
+    markers = set('的得了在是等中为向将于对以可所从因此如被把让给到由按根据通过由于为了及其以上以下')
+    return bool(markers & set(cn_chars))
+
+
+def _extract_key_tokens(text):
+    """Extract alphanumeric tokens (codes, numbers) for semantic matching."""
+    tokens = set()
+    for match in re.finditer(r'[A-Za-z0-9]{3,}', text):
+        tokens.add(match.group().lower())
+    return tokens
+
+
+def is_already_bilingual_v3(text, adjacent_en_texts=None):
     """
-    Check if text already contains English translation alongside Chinese.
+    Determine if Chinese text already has an English translation nearby
+    by semantically comparing CN and EN content — no character ratios or
+    length thresholds.
 
-    Returns True if the text is already bilingual (should skip translation).
-    Returns False if the text needs translation.
-
-    Uses multi-layer heuristics to distinguish genuinely bilingual text from
-    Chinese text that merely contains short English abbreviations:
-
-    1. Newline-separated bilingual:
-       If text has newlines and contains an English-only line AND a Chinese
-       line, it's already bilingual (EN translation on its own line).
-       e.g. "Equipment Qualification\n设备确认"
-
-    2. For single-line text, uses Chinese character ratio:
-       - CN ratio > 0.65 → predominantly Chinese → needs translation
-         e.g. "负责向QA申请" (QA is just an abbreviation)
-       - CN ratio < 0.40 → predominantly English → already bilingual
-         e.g. "Analytical Development (方法开发, AD)"
-       - CN ratio 0.40-0.65 → ambiguous zone:
-         * Short text (<= 40 chars) → likely bilingual label → skip
-           e.g. "Doc. Title 文件标题"
-         * Long text (> 40 chars) → likely needs translation
-           e.g. "使用范围适用于公司内部所有GMP文件的管理..."
+    Strategy:
+    1. Same-line: if a newline separates CN from pure-EN → already bilingual
+    2. Adjacent: if a nearby paragraph is natural English sharing key terms → bilingual
+    3. Single-line mixed: if text has natural English sentences → bilingual;
+       if it's just a CN-EN label pair (no Chinese grammar) → bilingual;
+       if it's a Chinese sentence with embedded EN terms → needs translation
+    4. Pure Chinese → needs translation
     """
     if not text or not has_chinese(text):
         return False
 
-    # Layer 1: Newline-separated bilingual (most reliable signal)
+    # Layer 1: Newline-separated CN + EN lines
     if '\n' in text:
         lines = text.split('\n')
         has_en_line = any(
@@ -63,32 +85,32 @@ def is_already_bilingual_v2(text):
         )
         has_cn_line = any(has_chinese(line) for line in lines)
         if has_en_line and has_cn_line:
-            return True  # Already bilingual with EN/CN on separate lines
+            return True
 
-    # Layer 2: CN character ratio for single-line text
-    cn_chars = sum(1 for c in text if ord(c) > 0x4e00)
-    en_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
-    meaningful = cn_chars + en_chars
+    # Layer 2: Adjacent natural English paragraph sharing key terms
+    if adjacent_en_texts:
+        cn_tokens = _extract_key_tokens(text)
+        if cn_tokens:
+            for ctx in adjacent_en_texts:
+                if (_has_natural_english_sentence(ctx)
+                        and not has_chinese(ctx)):
+                    ctx_tokens = _extract_key_tokens(ctx)
+                    if ctx_tokens and (cn_tokens & ctx_tokens):
+                        return True
 
-    if meaningful == 0:
-        return has_chinese(text)
-
-    cn_ratio = cn_chars / meaningful
-
-    # Predominantly Chinese → needs translation
-    if cn_ratio > 0.65:
+    # Layer 3: Single-line text with both CN and EN
+    if has_english(text):
+        # Natural English sentences mixed with Chinese → already bilingual
+        if _has_natural_english_sentence(text):
+            return True
+        # No Chinese sentence structure → label pair (e.g. "PURPOSE 目的")
+        if not _has_chinese_sentence_markers(text):
+            return True
+        # Chinese sentence with embedded English terms → needs translation
         return False
 
-    # Predominantly English → already bilingual
-    if cn_ratio < 0.40:
-        return True
-
-    # Ambiguous zone: use text length to decide
-    # Short texts are likely bilingual labels; long texts need translation
-    if len(text) > 40:
-        return False
-    else:
-        return True
+    # Layer 4: Pure Chinese → needs translation
+    return False
 
 
 def _safe_para_text(para):
@@ -236,7 +258,7 @@ def insert_translations_safe(input_path, translations_path, output_path):
             all_text = "".join(
                 t.text or "" for t in p_elem.findall(f".//{qn('w:t')}")
             ).strip()
-            if is_already_bilingual_v2(all_text):
+            if is_already_bilingual_v3(all_text):
                 para_skipped += 1
                 continue
             # Skip if translation text already appears in paragraph
@@ -272,7 +294,7 @@ def insert_translations_safe(input_path, translations_path, output_path):
                     t.text or "" for t in target_elem.findall(f".//{qn('w:t')}")
                 ).strip()
                 # Skip if paragraph already has mixed EN words + CH (already bilingual)
-                if is_already_bilingual_v2(target_text):
+                if is_already_bilingual_v3(target_text):
                     skipped += 1
                     continue
                 # Skip if this cell already has English text above the Chinese
