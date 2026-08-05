@@ -9,8 +9,6 @@ Supports two provider modes (set via LLM_PROVIDER env var):
     openai   — OpenAI-compatible API (DeepSeek, OpenAI, Groq, etc.)
     gemini   — Google Gemini API (REST)
 
-Uses batching (10 segments per request) to stay within free-tier rate limits.
-
 OpenAI-compatible configuration:
     LLM_API_BASE    — API base URL (default: https://api.deepseek.com/v1)
     LLM_API_KEY     — API key (required)
@@ -18,7 +16,7 @@ OpenAI-compatible configuration:
 
 Gemini configuration:
     LLM_API_KEY     — Google AI API key (required)
-    LLM_MODEL       — Model name (default: gemini-2.0-flash)
+    LLM_MODEL       — Model name (default: gemini-2.5-flash)
 
 Usage:
     python translate_llm.py <content.json> [--output translations.json]
@@ -38,8 +36,8 @@ except ImportError:
 # ── Config ─────────────────────────────────────────────────────────────
 
 BATCH_SIZE = 10          # texts per API call
-MIN_DELAY = 5.0          # seconds between batches (Gemini free: 15 RPM)
-MAX_RETRIES = 3          # retries on 429 rate limit
+MIN_DELAY = 1.0          # seconds between batches
+MAX_RETRIES = 2          # retries on transient errors
 
 
 # ── CMC/GMP System Prompt ──────────────────────────────────────────────
@@ -250,7 +248,7 @@ def call_llm_batch(texts, api_base=None, api_key=None, model=None, provider=None
 
     if provider == "gemini":
         api_key = api_key or os.environ.get("LLM_API_KEY", "")
-        model = model or os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+        model = model or os.environ.get("LLM_MODEL", "gemini-2.5-flash")
         if not api_key:
             raise RuntimeError("LLM_API_KEY is required. Get a free key at https://aistudio.google.com/apikey")
         return _call_gemini_batch(texts, api_key, model)
