@@ -38,12 +38,19 @@ app.config["OUTPUT_FOLDER"] = str(Path(__file__).parent / "outputs")
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 
-# LLM config from environment (accepts LLM_API_URL or LLM_API_BASE)
+# LLM config from environment
+# LLM_PROVIDER: "openai" (DeepSeek/OpenAI/Groq) or "gemini" (Google Gemini)
+_provider = os.environ.get("LLM_PROVIDER", "openai").lower()
 _api_url = os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE")
+if _provider == "gemini":
+    _default_model = "gemini-2.0-flash"
+else:
+    _default_model = "deepseek-chat"
 LLM_CONFIG = {
+    "provider": _provider,
     "api_base": _api_url or "https://api.deepseek.com/v1",
     "api_key": os.environ.get("LLM_API_KEY", ""),
-    "model": os.environ.get("LLM_MODEL", "deepseek-chat"),
+    "model": os.environ.get("LLM_MODEL", _default_model),
 }
 LLM_AVAILABLE = bool(LLM_CONFIG["api_key"])
 
@@ -358,6 +365,7 @@ def translate():
 def status():
     return jsonify({
         "llm_available": LLM_AVAILABLE,
+        "llm_provider": LLM_CONFIG["provider"],
         "llm_model": LLM_CONFIG["model"],
         "scripts": {
             "extract": os.path.exists(SCRIPTS_DIR / "extract_paragraphs.py"),
