@@ -93,6 +93,17 @@ Use these exact English equivalents for all Chinese terms:
 - If Chinese text contains embedded English (e.g., product names, abbreviations),
   preserve it exactly as-is in the translation
 
+### Natural terminology in context
+The mandatory terms above are a GLOSSARY, not a find-and-replace rule.
+Always use the natural English word for the context, not the longest possible expansion:
+  - "本标准操作规程…" → "This procedure…" or "This SOP…" (NOT "This Standard Operating Procedure…")
+  - "本规程…" → "This procedure…"
+  - "制定本…" → "establish this…" (NOT "formulate this…")
+  - "定义…原则" → "define/principles" → use "clarify/principles" or "establish/principles" depending on context
+  - In running body text, prefer concise forms. Only use the full expansion on title pages or glossary entries.
+  - Use "clarify" (NOT "define") when the Chinese is 明确/阐明.
+  - Match the tone and brevity of the Chinese source — if the Chinese is conversational, the English should be too.
+
 ## Output Format
 You will receive a list of Chinese texts to translate, each prefixed with [N].
 Return EXACTLY one translation per line, in the same order.
