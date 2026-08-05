@@ -60,6 +60,39 @@ def cell_has_existing_english_above(cell, target_pi):
     return False
 
 
+def translation_already_in_paragraph(para_elem, eng_text):
+    """
+    Check if the English translation text already exists in the paragraph.
+    This prevents duplicates when the original cell already has bilingual
+    content (EN + CH in the same paragraph, separated by line breaks).
+    """
+    if not eng_text:
+        return False
+    eng_lower = eng_text.strip().lower()
+    # Collect all text from this paragraph's runs
+    existing_parts = []
+    for t in para_elem.findall(f".//{qn('w:t')}"):
+        if t.text:
+            existing_parts.append(t.text)
+    existing_full = "".join(existing_parts).strip().lower()
+    # Check if translation already appears in the paragraph text
+    return eng_lower in existing_full
+
+
+def paragraph_is_already_bilingual(para_elem):
+    """
+    Check if a paragraph already contains both English and Chinese text
+    (e.g., 'Doc. Title\\n文件标题' in the same paragraph via w:br).
+    If so, adding another English line would be a duplicate.
+    """
+    all_text = []
+    for t in para_elem.findall(f".//{qn('w:t')}"):
+        if t.text:
+            all_text.append(t.text)
+    full = "".join(all_text)
+    return has_chinese(full) and has_english(full)
+
+
 def make_english_run(eng_text, is_first=False):
     elements = []
     if not is_first:
@@ -164,6 +197,11 @@ def insert_translations_safe(input_path, translations_path, output_path):
                     continue
                 target_p = cell.paragraphs[pi]
                 target_elem = target_p._element
+                # Skip if translation already appears in this paragraph
+                # (original already has bilingual EN+CH in same paragraph)
+                if translation_already_in_paragraph(target_elem, eng_text):
+                    skipped += 1
+                    continue
                 elem_path = get_element_path(target_elem, tree)
                 if elem_path and elem_path in modified_paths:
                     continue
