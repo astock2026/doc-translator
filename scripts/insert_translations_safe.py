@@ -166,10 +166,6 @@ def insert_translations_safe(input_path, translations_path, output_path):
     for i, p_elem in enumerate(paragraph_elements):
         if i in para_translations:
             eng_text = para_translations[i]
-            # Skip if paragraph is already bilingual (EN + CH in same para)
-            if paragraph_is_already_bilingual(p_elem):
-                para_skipped += 1
-                continue
             # Skip if translation text already appears in paragraph
             if translation_already_in_paragraph(p_elem, eng_text):
                 para_skipped += 1
@@ -206,10 +202,6 @@ def insert_translations_safe(input_path, translations_path, output_path):
                     continue
                 target_p = cell.paragraphs[pi]
                 target_elem = target_p._element
-                # Skip if target paragraph is already bilingual (EN + CH in same para)
-                if paragraph_is_already_bilingual(target_elem):
-                    skipped += 1
-                    continue
                 # Skip if translation already appears in this paragraph
                 # (original already has bilingual EN+CH in same paragraph)
                 if translation_already_in_paragraph(target_elem, eng_text):
