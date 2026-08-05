@@ -1,16 +1,22 @@
 """
 LLM-powered CMC/GMP translation engine.
 
-Translates Chinese text to English using an OpenAI-compatible LLM API
-with the full CMC/GMP terminology glossary as system instructions.
+Translates Chinese text to English using an LLM API with the full
+CMC/GMP terminology glossary as system instructions.
 Produces translations matching the bilingual-docx-translate skill quality.
 
-Configuration via environment variables:
+Supports two provider modes (set via LLM_PROVIDER env var):
+    openai   — OpenAI-compatible API (DeepSeek, OpenAI, Groq, etc.)
+    gemini   — Google Gemini API (REST)
+
+OpenAI-compatible configuration:
     LLM_API_BASE    — API base URL (default: https://api.deepseek.com/v1)
     LLM_API_KEY     — API key (required)
     LLM_MODEL       — Model name (default: deepseek-chat)
 
-Supports: DeepSeek, OpenAI, or any OpenAI-compatible API.
+Gemini configuration:
+    LLM_API_KEY     — Google AI API key (required)
+    LLM_MODEL       — Model name (default: gemini-2.0-flash)
 
 Usage:
     python translate_llm.py <content.json> [--output translations.json]
@@ -85,19 +91,10 @@ Return ONLY the English translation. No explanations, no notes, no prefixes.
 Each response must contain ONLY the translated text, nothing else."""
 
 
-def call_llm(prompt_text, api_base=None, api_key=None, model=None):
-    """Call LLM API for a single translation."""
-    api_base = api_base or os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE", "https://api.deepseek.com/v1")
-    api_key = api_key or os.environ.get("LLM_API_KEY", "")
-    model = model or os.environ.get("LLM_MODEL", "deepseek-chat")
+# ── Provider: OpenAI-compatible (DeepSeek, OpenAI, Groq, etc.) ─────────
 
-    if not api_key:
-        raise RuntimeError(
-            "LLM_API_KEY environment variable is required.\n"
-            "Get a free key at https://platform.deepseek.com/api_keys "
-            "or set OPENAI_API_KEY for OpenAI."
-        )
-
+def _call_openai(prompt_text, api_base, api_key, model):
+    """Call an OpenAI-compatible chat completions API."""
     url = f"{api_base.rstrip('/')}/chat/completions"
 
     payload = {
@@ -127,7 +124,81 @@ def call_llm(prompt_text, api_base=None, api_key=None, model=None):
         raise RuntimeError(f"LLM API connection error: {e.reason}")
 
 
-def translate_content(content_path, output_path=None, api_base=None, api_key=None, model=None):
+# ── Provider: Google Gemini ────────────────────────────────────────────
+
+def _call_gemini(prompt_text, api_key, model):
+    """Call Google Gemini REST API (generateContent)."""
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent?key={api_key}"
+    )
+
+    payload = {
+        "system_instruction": {
+            "parts": [{"text": CMC_SYSTEM_PROMPT}],
+        },
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": f"Translate this Chinese text to English:\n\n{prompt_text}"}],
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 2048,
+        },
+    }
+
+    data = json.dumps(payload).encode("utf-8")
+    req = Request(url, data=data, headers={"Content-Type": "application/json"})
+
+    try:
+        resp = urlopen(req, timeout=60)
+        result = json.loads(resp.read().decode("utf-8"))
+        return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except HTTPError as e:
+        body = e.read().decode("utf-8") if e.fp else ""
+        raise RuntimeError(f"Gemini API error {e.code}: {body[:500]}")
+    except URLError as e:
+        raise RuntimeError(f"Gemini API connection error: {e.reason}")
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"Unexpected Gemini response structure: {e}")
+
+
+# ── Unified entry point ────────────────────────────────────────────────
+
+def call_llm(prompt_text, api_base=None, api_key=None, model=None, provider=None):
+    """Call the configured LLM API for a single translation.
+
+    Provider is determined by LLM_PROVIDER env var ("openai" or "gemini").
+    """
+    provider = provider or os.environ.get("LLM_PROVIDER", "openai").lower()
+
+    if provider == "gemini":
+        api_key = api_key or os.environ.get("LLM_API_KEY", "")
+        model = model or os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+        if not api_key:
+            raise RuntimeError(
+                "LLM_API_KEY is required. Get a free key at "
+                "https://aistudio.google.com/apikey"
+            )
+        return _call_gemini(prompt_text, api_key, model)
+
+    else:
+        # OpenAI-compatible (DeepSeek, OpenAI, Groq, etc.)
+        api_base = api_base or os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE", "https://api.deepseek.com/v1")
+        api_key = api_key or os.environ.get("LLM_API_KEY", "")
+        model = model or os.environ.get("LLM_MODEL", "deepseek-chat")
+        if not api_key:
+            raise RuntimeError(
+                "LLM_API_KEY is required.\n"
+                "DeepSeek: https://platform.deepseek.com/api_keys\n"
+                "OpenAI:   https://platform.openai.com/api-keys"
+            )
+        return _call_openai(prompt_text, api_base, api_key, model)
+
+
+def translate_content(content_path, output_path=None, api_base=None, api_key=None, model=None, provider=None):
     """Translate all Chinese text in content.json using LLM."""
     with open(content_path, "r", encoding="utf-8") as f:
         content = json.load(f)
@@ -144,7 +215,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
         eng = ""
         if chn_text:
             try:
-                eng = call_llm(chn_text, api_base, api_key, model)
+                eng = call_llm(chn_text, api_base, api_key, model, provider)
                 translated += 1
             except Exception as e:
                 eng = f"[TRANSLATION ERROR: {e}]"
@@ -170,7 +241,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
                 eng = ""
                 if chn_text:
                     try:
-                        eng = call_llm(chn_text, api_base, api_key, model)
+                        eng = call_llm(chn_text, api_base, api_key, model, provider)
                         translated += 1
                     except Exception as e:
                         eng = f"[TRANSLATION ERROR: {e}]"
@@ -200,9 +271,10 @@ if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: python translate_llm.py <content.json> [--output translations.json]")
         print("\nEnvironment variables:")
-        print("  LLM_API_KEY    — API key (required)")
-        print("  LLM_API_BASE   — API base URL (default: https://api.deepseek.com/v1)")
-        print("  LLM_MODEL      — Model name (default: deepseek-chat)")
+        print("  LLM_PROVIDER  — 'openai' (default) or 'gemini'")
+        print("  LLM_API_KEY   — API key (required)")
+        print("  LLM_API_URL   — API base URL (OpenAI-compatible; default: DeepSeek)")
+        print("  LLM_MODEL     — Model name")
         sys.exit(1)
 
     input_path = sys.argv[1]
