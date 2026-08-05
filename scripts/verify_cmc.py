@@ -501,7 +501,7 @@ if __name__ == "__main__":
         print("\nFlagged issues:")
         for issue in report["issues"]:
             flag = "⚠️ " if issue["severity"] == "warning" else "ℹ️ "
-            print(f"  {flag}[{issue['category']}] {issue['location']}")
+            print(f"  {flag}[{issue['category']}] {issue.get('location', 'unknown')}")
             print(f"      Term: '{issue['chinese_term']}' → expected '{issue['expected']}'")
             if issue.get("found_variants"):
                 print(f"      Variants used: {', '.join(issue['found_variants'])}")
