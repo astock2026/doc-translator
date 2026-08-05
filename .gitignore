@@ -4,3 +4,7 @@ outputs/
 __pycache__/
 *.pyc
 .env
+*_check.json
+*_bilingual*.json
+*_translations.json
+validate_*.py
