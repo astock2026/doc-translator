@@ -78,6 +78,16 @@ def index():
     return render_template("index.html", llm_available=LLM_AVAILABLE)
 
 
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  Step 1: Extract Chinese content
 # ═══════════════════════════════════════════════════════════════════════

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact — DocTranslator</title>
+    <style>
+        :root {
+            --bg: #fff;
+            --bg-secondary: #f9fafb;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-tertiary: #9ca3af;
+            --blue-50: #eff6ff;
+            --blue-100: #dbeafe;
+            --blue-600: #2563eb;
+            --border: #e5e7eb;
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 48px 24px;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--blue-600);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 32px;
+        }
+        .back-link:hover { text-decoration: underline; }
+        .card {
+            background: var(--bg);
+            border: 0.5px solid var(--border);
+            border-radius: var(--radius);
+            padding: 32px;
+        }
+        .card h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            letter-spacing: -0.01em;
+        }
+        .card p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+        .email-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--blue-600);
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 500;
+            padding: 12px 20px;
+            background: var(--blue-50);
+            border-radius: var(--radius-sm);
+            transition: background 0.15s;
+        }
+        .email-link:hover {
+            background: var(--blue-100);
+        }
+        .email-link svg {
+            width: 18px;
+            height: 18px;
+        }
+        .response-note {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            margin-top: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to DocTranslator</a>
+        <div class="card">
+            <h1>Contact Us</h1>
+            <p>Have questions, feedback, or need help with DocTranslator? We'd love to hear from you.</p>
+
+            <a href="mailto:adam_j_cheng@hotmail.com" class="email-link">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="2" y="4" width="20" height="16" rx="2"/>
+                    <path d="M22 4L12 13L2 4"/>
+                </svg>
+                adam_j_cheng@hotmail.com
+            </a>
+
+            <p class="response-note">We typically respond within 1 business day.</p>
+        </div>
+    </div>
+</body>
+</html>
