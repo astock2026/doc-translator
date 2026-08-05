@@ -43,7 +43,7 @@ os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 _provider = os.environ.get("LLM_PROVIDER", "openai").lower()
 _api_url = os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE")
 if _provider == "gemini":
-    _default_model = "gemini-2.0-flash"
+    _default_model = "gemini-2.5-flash"
 else:
     _default_model = "deepseek-chat"
 LLM_CONFIG = {
