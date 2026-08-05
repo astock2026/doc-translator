@@ -243,6 +243,22 @@
         /* Hide file card and upload area transitions */
         .hidden { display: none !important; }
 
+        .subtitle {
+            border-bottom: 1px dashed transparent;
+            padding: 2px 4px;
+            border-radius: 4px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .subtitle:hover {
+            border-bottom-color: #94a3b8;
+            background: #f8fafc;
+        }
+        .subtitle:focus {
+            outline: 2px solid #6366f1;
+            outline-offset: 2px;
+            background: #fff;
+        }
+
         @media (max-width: 500px) {
             .container { padding: 30px 12px 20px; }
             .upload-area { padding: 40px 16px; }
@@ -253,7 +269,7 @@
 <div class="container">
     <header>
         <h1>📄 Document Translator</h1>
-        <p>Chinese → English bilingual DOCX · CMC/GMP pharmaceutical grade</p>
+        <p class="subtitle" contenteditable="true">Chinese → English bilingual DOCX · CMC/GMP pharmaceutical grade</p>
     </header>
 
     <!-- Upload -->
