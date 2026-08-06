@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment — DocTranslator</title>
+    <style>
+        :root {
+            --blue-600: #2563eb;
+            --blue-700: #1d4ed8;
+            --blue-50: #eff6ff;
+            --blue-100: #dbeafe;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-tertiary: #9ca3af;
+            --border: #e5e7eb;
+            --bg: #ffffff;
+            --bg-secondary: #f9fafb;
+            --radius: 12px;
+            --radius-sm: 8px;
+            --success: #16a34a;
+            --success-bg: #dcfce7;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 60px 20px 40px;
+        }
+
+        /* Nav */
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 48px;
+        }
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text);
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .nav-brand-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            background: var(--blue-600);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .nav-brand-icon svg { width: 16px; height: 16px; }
+        .nav-links { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+        .nav-links a { color: var(--text-secondary); text-decoration: none; }
+        .nav-links a:hover { color: var(--text); }
+        .btn-signin {
+            border: 0.5px solid #d1d5db;
+            border-radius: 20px;
+            padding: 5px 14px;
+            font-size: 12px;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .btn-signin:hover { background: var(--bg-secondary); }
+
+        /* Page header */
+        .page-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .page-header .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: var(--blue-50);
+            color: var(--blue-600);
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-bottom: 12px;
+        }
+        .page-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin-bottom: 8px;
+        }
+        .page-header p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            max-width: 380px;
+            margin: 0 auto;
+        }
+
+        /* Top-up card */
+        .topup-card {
+            background: var(--bg);
+            border: 0.5px solid var(--border);
+            border-radius: 16px;
+            padding: 28px 28px 20px;
+            margin-bottom: 28px;
+        }
+        .topup-card h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .topup-card .topup-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        /* Amount selector */
+        .amount-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .amount-option {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+            background: var(--bg);
+        }
+        .amount-option:hover {
+            border-color: var(--blue-600);
+            background: var(--blue-50);
+        }
+        .amount-option.selected {
+            border-color: var(--blue-600);
+            background: var(--blue-50);
+            box-shadow: 0 0 0 1px var(--blue-600);
+        }
+        .amount-option .amount-value {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            color: var(--text);
+            margin-bottom: 2px;
+        }
+        .amount-option .amount-docs {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .amount-option.selected .amount-docs {
+            color: var(--blue-600);
+            font-weight: 500;
+        }
+
+        /* Custom amount */
+        .custom-amount-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-secondary);
+        }
+        .custom-amount-row span {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .custom-amount-row input {
+            flex: 1;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-family: inherit;
+            color: var(--text);
+            outline: none;
+        }
+        .custom-amount-row input::placeholder { color: var(--text-tertiary); }
+        .custom-amount-row .doc-count {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        /* Balance preview */
+        .balance-preview {
+            margin-top: 12px;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .balance-preview strong {
+            color: var(--text);
+            font-size: 14px;
+        }
+
+        /* Payment section */
+        .payment-section {
+            background: var(--bg);
+            border: 0.5px solid var(--border);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 32px;
+        }
+        .payment-section h2 {
+            font-size: 17px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .payment-section .payment-subtitle {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .payment-qr-area {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+        }
+        .qr-code-img {
+            width: 280px;
+            height: auto;
+            max-width: 100%;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        .payment-instructions { flex: 1; min-width: 0; }
+        .payment-instructions h4 {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .payment-steps {
+            list-style: none;
+            counter-reset: step;
+        }
+        .payment-steps li {
+            counter-increment: step;
+            font-size: 13px;
+            color: var(--text-secondary);
+            padding: 5px 0 5px 26px;
+            position: relative;
+            line-height: 1.4;
+        }
+        .payment-steps li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 5px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--blue-50);
+            color: var(--blue-600);
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .payment-note {
+            margin-top: 14px;
+            padding: 10px 14px;
+            background: var(--blue-50);
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--blue-600);
+            line-height: 1.5;
+        }
+
+        /* Order summary */
+        .order-summary {
+            margin-top: 20px;
+            padding-top: 18px;
+            border-top: 0.5px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .order-summary .summary-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .order-summary .summary-amount {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: -0.02em;
+        }
+        .order-summary .summary-amount small {
+            font-size: 13px;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            margin-bottom: 24px;
+        }
+        .back-link:hover { color: var(--text); }
+
+        /* Footer */
+        .footer {
+            border-top: 0.5px solid var(--border);
+            padding-top: 16px;
+            display: flex;
+            gap: 16px;
+            font-size: 12px;
+            justify-content: center;
+        }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--text); }
+
+        @media (max-width: 600px) {
+            .container { padding: 30px 14px 24px; }
+            .amount-options { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+            .amount-option { padding: 12px 8px; }
+            .payment-qr-area { flex-direction: column; align-items: center; }
+            .payment-section { padding: 24px 20px; }
+            .page-header h1 { font-size: 20px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- Nav -->
+    <nav class="nav">
+        <a href="/" class="nav-brand">
+            <div class="nav-brand-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+            </div>
+            <span>DocTranslator</span>
+        </a>
+        <div class="nav-links">
+            <a href="/payment">Payment</a>
+            <a href="/login" class="btn-signin">Sign in</a>
+        </div>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="badge">Pay as you go</div>
+        <h1>Top up your balance</h1>
+        <p>¥29 per document. Add money to your account and use it anytime — no subscriptions, no expiry.</p>
+    </div>
+
+    <!-- Top-up card -->
+    <div class="topup-card">
+        <h3>Select amount</h3>
+        <p class="topup-subtitle">¥29 translates one document. Save more for bulk translations.</p>
+
+        <div class="amount-options" id="amountOptions">
+            <div class="amount-option selected" data-amount="29" data-docs="1">
+                <div class="amount-value">¥29</div>
+                <div class="amount-docs">1 document</div>
+            </div>
+            <div class="amount-option" data-amount="58" data-docs="2">
+                <div class="amount-value">¥58</div>
+                <div class="amount-docs">2 documents</div>
+            </div>
+            <div class="amount-option" data-amount="87" data-docs="3">
+                <div class="amount-value">¥87</div>
+                <div class="amount-docs">3 documents</div>
+            </div>
+            <div class="amount-option" data-amount="145" data-docs="5">
+                <div class="amount-value">¥145</div>
+                <div class="amount-docs">5 documents</div>
+            </div>
+            <div class="amount-option" data-amount="290" data-docs="10">
+                <div class="amount-value">¥290</div>
+                <div class="amount-docs">10 documents</div>
+            </div>
+            <div class="amount-option" data-amount="580" data-docs="20">
+                <div class="amount-value">¥580</div>
+                <div class="amount-docs">20 documents</div>
+            </div>
+        </div>
+
+        <div class="custom-amount-row">
+            <span>¥</span>
+            <input type="number" id="customAmount" placeholder="Custom amount..." min="29" step="1">
+            <span class="doc-count" id="customDocCount"></span>
+        </div>
+
+        <div class="balance-preview">
+            <span>Your balance will be topped up with</span>
+            <strong id="previewAmount">¥29</strong>
+        </div>
+    </div>
+
+    <!-- Payment Section -->
+    <div class="payment-section" id="payment">
+        <h2>WeChat Pay</h2>
+        <p class="payment-subtitle">Scan the QR code with WeChat to top up. Your balance updates automatically.</p>
+
+        <div class="payment-qr-area">
+            <img class="qr-code-img" src="/static/img/qr-code.jpg" alt="WeChat Payment QR Code">
+
+            <div class="payment-instructions">
+                <h4>How to pay</h4>
+                <ol class="payment-steps">
+                    <li>Open <strong>WeChat</strong> on your phone</li>
+                    <li>Tap <strong>Scan</strong> and point at the QR code</li>
+                    <li>Enter your selected amount and confirm</li>
+                    <li>Your balance is credited — start translating</li>
+                </ol>
+            </div>
+        </div>
+
+        <div class="order-summary">
+            <span class="summary-label">Top-up amount</span>
+            <span class="summary-amount" id="summaryAmount">¥29 <small>CNY</small></span>
+        </div>
+
+    </div>
+
+    <a href="/" class="back-link">&larr; Back to DocTranslator</a>
+
+    <footer class="footer">
+        <a href="/privacy">Privacy</a>
+        <a href="/contact">Contact</a>
+    </footer>
+</div>
+
+<script>
+(function() {
+    const options = document.querySelectorAll('.amount-option');
+    const customInput = document.getElementById('customAmount');
+    const previewAmount = document.getElementById('previewAmount');
+    const summaryAmount = document.getElementById('summaryAmount');
+    const customDocCount = document.getElementById('customDocCount');
+    const PRICE_PER_DOC = 29;
+
+    let selectedAmount = 29;
+
+    function updateUI(amount) {
+        selectedAmount = amount;
+        const docs = Math.floor(amount / PRICE_PER_DOC);
+        previewAmount.textContent = '¥' + amount;
+        summaryAmount.innerHTML = '¥' + amount + ' <small>CNY</small>';
+        customDocCount.textContent = docs > 0 ? '≈ ' + docs + ' document' + (docs > 1 ? 's' : '') : '';
+    }
+
+    options.forEach(opt => {
+        opt.addEventListener('click', function() {
+            options.forEach(o => o.classList.remove('selected'));
+            this.classList.add('selected');
+            const amt = parseInt(this.dataset.amount);
+            customInput.value = '';
+            customDocCount.textContent = this.dataset.docs + ' document' + (this.dataset.docs > 1 ? 's' : '');
+            updateUI(amt);
+        });
+    });
+
+    customInput.addEventListener('input', function() {
+        const val = parseInt(this.value);
+        if (this.value === '') {
+            customDocCount.textContent = '';
+            return;
+        }
+        options.forEach(o => o.classList.remove('selected'));
+        const amt = isNaN(val) ? selectedAmount : val;
+        updateUI(amt);
+    });
+
+    // Init custom doc count
+    customDocCount.textContent = '1 document';
+})();
+</script>
+</body>
+</html>
