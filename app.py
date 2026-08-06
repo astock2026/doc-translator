@@ -35,6 +35,8 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
 app.config["UPLOAD_FOLDER"] = str(Path(__file__).parent / "uploads")
 app.config["OUTPUT_FOLDER"] = str(Path(__file__).parent / "outputs")
 
+app.config["TEMPLATES_AUTO_RELOAD"] = True  # re-read templates from disk every request
+
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
 
@@ -86,6 +88,16 @@ def privacy():
 @app.route("/contact")
 def contact():
     return render_template("contact.html")
+
+
+@app.route("/login")
+def login():
+    return render_template("login.html")
+
+
+@app.route("/payment")
+def payment():
+    return render_template("payment.html")
 
 
 # ═══════════════════════════════════════════════════════════════════════
