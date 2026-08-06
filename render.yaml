@@ -3,8 +3,14 @@ services:
     name: doc-translator
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 300
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600
     plan: free
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.12
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        sync: false
+      - key: LLM_MODEL
+        sync: false
