@@ -72,7 +72,7 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # ── Email (SMTP) Config ────────────────────────────────────────────────
 SMTP_ENABLED = bool(os.environ.get("SMTP_PASSWORD"))
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-mail.outlook.com")
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.office365.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
 SMTP_USER = os.environ.get("SMTP_USER", "adam_j_cheng@hotmail.com")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
@@ -108,9 +108,10 @@ def run_script(script_name, *args, timeout=120):
 def send_email(subject, body):
     """Send an email notification to the admin (NOTIFY_EMAIL)."""
     if not SMTP_ENABLED:
-        logger.warning(f"SMTP not configured. Would have sent: {subject}")
+        logger.warning(f"SMTP not configured (SMTP_PASSWORD empty). Would have sent: {subject}")
         return False
 
+    logger.info(f"Attempting to send email via {SMTP_HOST}:{SMTP_PORT} as {SMTP_USER} to {NOTIFY_EMAIL}")
     try:
         msg = MIMEMultipart()
         msg["From"] = SMTP_FROM
@@ -123,10 +124,10 @@ def send_email(subject, body):
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(msg)
 
-        logger.info(f"Email sent: {subject}")
+        logger.info(f"Email sent successfully: {subject}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        logger.error(f"Failed to send email: {type(e).__name__}: {e}")
         return False
 
 
