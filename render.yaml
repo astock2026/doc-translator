@@ -6,17 +6,11 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600
     plan: free
     rootDir: .
-    disk:
-      name: data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.12
       - key: SECRET_KEY
         generateValue: true
-      - key: DB_PATH
-        value: /var/data/doc_translator.db
       - key: LLM_API_KEY
         sync: false
       - key: LLM_PROVIDER
@@ -29,3 +23,7 @@ services:
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+
+databases:
+  - name: doc-translator-db
+    plan: free
