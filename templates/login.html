@@ -20,6 +20,8 @@
             --radius-sm: 8px;
             --danger: #dc2626;
             --danger-bg: #fee2e2;
+            --success: #16a34a;
+            --success-bg: #dcfce7;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -101,6 +103,18 @@
             color: var(--text-secondary);
         }
 
+        /* Alert messages */
+        .alert {
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            margin-bottom: 18px;
+            display: none;
+        }
+        .alert-error { background: var(--danger-bg); color: var(--danger); }
+        .alert-success { background: var(--success-bg); color: var(--success); }
+        .alert.show { display: block; }
+
         /* Form */
         .form-group {
             margin-bottom: 18px;
@@ -131,6 +145,8 @@
         .form-group input::placeholder {
             color: var(--text-tertiary);
         }
+
+        .form-group.hidden { display: none; }
 
         .form-options {
             display: flex;
@@ -168,7 +184,7 @@
             cursor: pointer;
             border: none;
             font-family: inherit;
-            transition: background 0.15s;
+            transition: background 0.15s, opacity 0.15s;
         }
         .btn-primary {
             background: var(--blue-600);
@@ -176,6 +192,7 @@
             width: 100%;
         }
         .btn-primary:hover { background: var(--blue-700); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .card-footer {
             text-align: center;
@@ -187,8 +204,31 @@
             color: var(--blue-600);
             text-decoration: none;
             font-weight: 500;
+            cursor: pointer;
         }
         .card-footer a:hover { text-decoration: underline; }
+
+        /* Success state */
+        .success-state {
+            text-align: center;
+            display: none;
+            padding: 20px 0;
+        }
+        .success-state.show { display: block; }
+        .success-state .check {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--success-bg);
+            color: var(--success);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin: 0 auto 16px;
+        }
+        .success-state h2 { font-size: 18px; margin-bottom: 8px; }
+        .success-state p { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 
         .back-link {
             display: block;
@@ -239,14 +279,25 @@
         </div>
     </nav>
 
-    <!-- Sign In Card -->
-    <div class="card">
+    <!-- Card -->
+    <div class="card" id="formCard">
         <div class="card-header">
-            <h1>Welcome</h1>
-            <p>Sign in to your DocTranslator account</p>
+            <h1 id="cardTitle">Welcome back</h1>
+            <p id="cardSubtitle">Sign in to your DocTranslator account</p>
         </div>
 
-        <form method="post" action="/api/login">
+        <!-- Alert -->
+        <div class="alert alert-error" id="alertError"></div>
+        <div class="alert alert-success" id="alertSuccess"></div>
+
+        <!-- Sign In / Sign Up Form -->
+        <form id="authForm" novalidate>
+            <!-- Name field (sign-up only) -->
+            <div class="form-group hidden" id="nameGroup">
+                <label for="name">Full name</label>
+                <input type="text" id="name" name="name" placeholder="Your name" autocomplete="name">
+            </div>
+
             <div class="form-group">
                 <label for="email">Email address</label>
                 <input type="email" id="email" name="email" placeholder="you@example.com" required autocomplete="email">
@@ -257,7 +308,13 @@
                 <input type="password" id="password" name="password" placeholder="Enter your password" required autocomplete="current-password">
             </div>
 
-            <div class="form-options">
+            <!-- Confirm password (sign-up only) -->
+            <div class="form-group hidden" id="confirmGroup">
+                <label for="confirmPassword">Confirm password</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Re-enter your password" autocomplete="new-password">
+            </div>
+
+            <div class="form-options" id="formOptions">
                 <label>
                     <input type="checkbox" name="remember">
                     Remember me
@@ -265,11 +322,18 @@
                 <a href="#forgot">Forgot password?</a>
             </div>
 
-            <button type="submit" class="btn btn-primary">Sign in</button>
+            <button type="submit" class="btn btn-primary" id="submitBtn">Sign in</button>
         </form>
 
-        <div class="card-footer">
-            Don't have an account? <a href="#signup">Sign up</a>
+        <div class="card-footer" id="toggleFooter">
+            Don't have an account? <a id="toggleLink" href="#">Sign up</a>
+        </div>
+
+        <!-- Success state (shown after sign-up) -->
+        <div class="success-state" id="successState">
+            <div class="check">&#10003;</div>
+            <h2>Welcome, <span id="successName"></span>!</h2>
+            <p>Your account has been created.<br>To use the translation service, please complete payment on the <a href="/payment">Payment page</a>.</p>
         </div>
     </div>
 
@@ -281,5 +345,171 @@
         <a href="/contact">Contact</a>
     </footer>
 </div>
+
+<script>
+(function() {
+    var isSignUp = false;
+    var form = document.getElementById('authForm');
+    var cardTitle = document.getElementById('cardTitle');
+    var cardSubtitle = document.getElementById('cardSubtitle');
+    var submitBtn = document.getElementById('submitBtn');
+    var toggleLink = document.getElementById('toggleLink');
+    var toggleFooter = document.getElementById('toggleFooter');
+    var nameGroup = document.getElementById('nameGroup');
+    var confirmGroup = document.getElementById('confirmGroup');
+    var formOptions = document.getElementById('formOptions');
+    var alertError = document.getElementById('alertError');
+    var alertSuccess = document.getElementById('alertSuccess');
+    var successState = document.getElementById('successState');
+    var successName = document.getElementById('successName');
+    var formCard = document.getElementById('formCard');
+
+    function hideAlerts() {
+        alertError.classList.remove('show');
+        alertError.textContent = '';
+        alertSuccess.classList.remove('show');
+        alertSuccess.textContent = '';
+    }
+
+    function showError(msg) {
+        alertError.textContent = msg;
+        alertError.classList.add('show');
+        alertSuccess.classList.remove('show');
+    }
+
+    toggleLink.addEventListener('click', function(e) {
+        e.preventDefault();
+        isSignUp = !isSignUp;
+        hideAlerts();
+
+        if (isSignUp) {
+            cardTitle.textContent = 'Create your account';
+            cardSubtitle.textContent = 'Sign up to start translating documents';
+            submitBtn.textContent = 'Create account';
+            toggleLink.textContent = 'Sign in';
+            toggleFooter.innerHTML = 'Already have an account? <a id="toggleLink" href="#">Sign in</a>';
+            nameGroup.classList.remove('hidden');
+            confirmGroup.classList.remove('hidden');
+            formOptions.style.display = 'none';
+            document.getElementById('name').required = true;
+            document.getElementById('confirmPassword').required = true;
+            document.getElementById('password').autocomplete = 'new-password';
+            document.getElementById('email').autocomplete = 'email';
+            form.action = '/api/signup';
+        } else {
+            cardTitle.textContent = 'Welcome back';
+            cardSubtitle.textContent = 'Sign in to your DocTranslator account';
+            submitBtn.textContent = 'Sign in';
+            toggleLink.textContent = 'Sign up';
+            toggleFooter.innerHTML = 'Don\'t have an account? <a id="toggleLink" href="#">Sign up</a>';
+            nameGroup.classList.add('hidden');
+            confirmGroup.classList.add('hidden');
+            formOptions.style.display = '';
+            document.getElementById('name').required = false;
+            document.getElementById('confirmPassword').required = false;
+            document.getElementById('password').autocomplete = 'current-password';
+            document.getElementById('email').autocomplete = 'email';
+            form.action = '/api/login';
+        }
+
+        // Re-bind toggle link
+        document.getElementById('toggleLink').addEventListener('click', arguments.callee);
+        successState.classList.remove('show');
+        form.style.display = '';
+        toggleFooter.style.display = '';
+    });
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        hideAlerts();
+        submitBtn.disabled = true;
+        submitBtn.textContent = isSignUp ? 'Creating account...' : 'Signing in...';
+
+        var email = document.getElementById('email').value.trim();
+        var password = document.getElementById('password').value;
+        var name = document.getElementById('name').value.trim();
+
+        if (isSignUp) {
+            var confirmPassword = document.getElementById('confirmPassword').value;
+            if (!name) {
+                showError('Please enter your name.');
+                resetBtn();
+                return;
+            }
+            if (password !== confirmPassword) {
+                showError('Passwords do not match.');
+                resetBtn();
+                return;
+            }
+            if (password.length < 6) {
+                showError('Password must be at least 6 characters.');
+                resetBtn();
+                return;
+            }
+
+            fetch('/api/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, email: email, password: password }),
+            })
+            .then(function(res) { return res.json().then(function(d) { return { status: res.status, data: d }; }); })
+            .then(function(result) {
+                if (result.status === 201) {
+                    // Success — show welcome state
+                    successName.textContent = result.data.user.name;
+                    form.style.display = 'none';
+                    toggleFooter.style.display = 'none';
+                    successState.classList.add('show');
+                } else {
+                    showError(result.data.error || 'Sign up failed.');
+                }
+            })
+            .catch(function(err) {
+                showError('Network error. Please try again.');
+            })
+            .finally(resetBtn);
+        } else {
+            // Sign in
+            fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: email, password: password }),
+            })
+            .then(function(res) { return res.json().then(function(d) { return { status: res.status, data: d }; }); })
+            .then(function(result) {
+                if (result.status === 200) {
+                    var u = result.data.user;
+                    if (u.is_authorized) {
+                        window.location.href = '/';
+                    } else {
+                        window.location.href = '/payment';
+                    }
+                } else {
+                    showError(result.data.error || 'Invalid email or password.');
+                }
+            })
+            .catch(function(err) {
+                showError('Network error. Please try again.');
+            })
+            .finally(resetBtn);
+        }
+    });
+
+    function resetBtn() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = isSignUp ? 'Create account' : 'Sign in';
+    }
+
+    // Check if already logged in
+    fetch('/api/me')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.user) {
+                window.location.href = data.user.is_authorized ? '/' : '/payment';
+            }
+        })
+        .catch(function() {});
+})();
+</script>
 </body>
 </html>

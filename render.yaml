@@ -8,9 +8,15 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.12
+      - key: SECRET_KEY
+        generateValue: true
       - key: LLM_API_KEY
         sync: false
       - key: LLM_PROVIDER
         sync: false
       - key: LLM_MODEL
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: ADMIN_PASSWORD
         sync: false
