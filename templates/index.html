@@ -403,7 +403,9 @@
         </div>
         <div class="nav-links">
             <a href="/payment">Payment</a>
-            <a href="/login" class="btn-signin">Sign in</a>
+            <a href="/login" class="btn-signin" id="navSignin">Sign in</a>
+            <span id="navUser" style="display:none;font-weight:600;color:white;"></span>
+            <a href="#" id="navLogout" style="display:none;color:var(--gray-400);font-size:14px;">Sign out</a>
         </div>
     </nav>
 
@@ -494,6 +496,24 @@
 </div>
 
 <script>
+// ── Auth check for navbar ─────────────────────────────────────────────
+fetch('/api/me')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.user) {
+            document.getElementById('navSignin').style.display = 'none';
+            document.getElementById('navUser').style.display = '';
+            document.getElementById('navUser').textContent = data.user.name;
+            document.getElementById('navLogout').style.display = '';
+        }
+    });
+
+document.getElementById('navLogout').addEventListener('click', function(e) {
+    e.preventDefault();
+    fetch('/api/logout', { method: 'POST' })
+        .then(function() { window.location.reload(); });
+});
+
 const uploadArea = document.getElementById('upload-area');
 const fileInput = document.getElementById('file-input');
 const fileCard = document.getElementById('file-card');
