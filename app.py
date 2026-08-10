@@ -135,8 +135,11 @@ def login_required(f):
     return decorated
 
 
+COST_PER_TRANSLATION = 29  # CNY
+
+
 def authorized_required(f):
-    """Decorator: require user to be logged in AND authorized."""
+    """Decorator: require user to be logged in, authorized, and have sufficient balance."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if "user_id" not in session:
@@ -149,6 +152,11 @@ def authorized_required(f):
             return jsonify({
                 "error": "Your account is not yet authorized. Please complete payment and wait for approval."
             }), 403
+        if user["balance"] < COST_PER_TRANSLATION:
+            return jsonify({
+                "error": f"Insufficient balance. Each translation costs ¥{COST_PER_TRANSLATION}. "
+                         f"Your current balance is ¥{user['balance']}. Please top up on the payment page."
+            }), 402
         return f(*args, **kwargs)
     return decorated
 
@@ -262,6 +270,8 @@ def api_login():
             "email": user["email"],
             "is_authorized": bool(user["is_authorized"]),
             "balance": user["balance"],
+            "cost_per_translation": COST_PER_TRANSLATION,
+            "can_translate": bool(user["is_authorized"] and user["balance"] >= COST_PER_TRANSLATION),
         },
     })
 
@@ -290,6 +300,8 @@ def api_me():
             "email": user["email"],
             "is_authorized": bool(user["is_authorized"]),
             "balance": user["balance"],
+            "cost_per_translation": COST_PER_TRANSLATION,
+            "can_translate": bool(user["is_authorized"] and user["balance"] >= COST_PER_TRANSLATION),
         },
     })
 
@@ -482,6 +494,14 @@ def insert():
         )
 
         logger.info(f"Insert complete: {output_path}")
+
+        # Deduct balance
+        db.update_balance(session["user_id"], -COST_PER_TRANSLATION)
+        updated_user = db.get_user_by_id(session["user_id"])
+        logger.info(
+            f"Charged ¥{COST_PER_TRANSLATION} to {updated_user['name']}. "
+            f"Remaining balance: ¥{updated_user['balance']}"
+        )
 
         para_done = sum(1 for p in trans_data.get("paragraphs", []) if p.get("translation", "").strip())
         cell_done = sum(
