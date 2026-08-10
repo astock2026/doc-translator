@@ -23,7 +23,7 @@ services:
         sync: false
       - key: LLM_MODEL
         sync: false
-      - key: SMTP_PASSWORD
+      - key: SENDGRID_API_KEY
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
