@@ -8,3 +8,4 @@ __pycache__/
 *_bilingual*.json
 *_translations.json
 validate_*.py
+doc_translator.db

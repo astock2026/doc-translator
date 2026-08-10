@@ -17,12 +17,18 @@ import subprocess
 import shutil
 import uuid
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from functools import wraps
 from pathlib import Path
 
 from flask import (
-    Flask, render_template, request, jsonify, send_file
+    Flask, render_template, request, jsonify, send_file, session, redirect, url_for
 )
 from werkzeug.utils import secure_filename
+
+import db
 
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
@@ -56,6 +62,25 @@ LLM_CONFIG = {
 }
 LLM_AVAILABLE = bool(LLM_CONFIG["api_key"])
 
+# ── Session & Security ─────────────────────────────────────────────────
+app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
+
+# ── Email (SMTP) Config ────────────────────────────────────────────────
+SMTP_ENABLED = bool(os.environ.get("SMTP_PASSWORD"))
+SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-mail.outlook.com")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "adam_j_cheng@hotmail.com")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", "adam_j_cheng@hotmail.com")
+NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL", "adam_j_cheng@hotmail.com")
+
+# Admin password for /admin dashboard
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+# ── Initialize Database ────────────────────────────────────────────────
+db.init_db()
+logger.info("Database initialized.")
+
 
 def run_script(script_name, *args, timeout=120):
     """Run a Python script from the scripts/ directory."""
@@ -69,6 +94,63 @@ def run_script(script_name, *args, timeout=120):
         logger.error(f"Script {script_name} failed:\nSTDERR: {result.stderr}")
         raise RuntimeError(result.stderr or result.stdout or f"Script exited with code {result.returncode}")
     return result.stdout
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Email & Auth Helpers
+# ═══════════════════════════════════════════════════════════════════════
+
+def send_email(subject, body):
+    """Send an email notification to the admin (NOTIFY_EMAIL)."""
+    if not SMTP_ENABLED:
+        logger.warning(f"SMTP not configured. Would have sent: {subject}")
+        return False
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = SMTP_FROM
+        msg["To"] = NOTIFY_EMAIL
+        msg["Subject"] = f"[DocTranslator] {subject}"
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.send_message(msg)
+
+        logger.info(f"Email sent: {subject}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
+        return False
+
+
+def login_required(f):
+    """Decorator: require user to be logged in (session['user_id'] must exist)."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            return jsonify({"error": "Please log in first."}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+def authorized_required(f):
+    """Decorator: require user to be logged in AND authorized."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            return jsonify({"error": "Please log in first."}), 401
+        user = db.get_user_by_id(session["user_id"])
+        if not user:
+            session.clear()
+            return jsonify({"error": "Account not found."}), 401
+        if not user["is_authorized"]:
+            return jsonify({
+                "error": "Your account is not yet authorized. Please complete payment and wait for approval."
+            }), 403
+        return f(*args, **kwargs)
+    return decorated
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -101,10 +183,207 @@ def payment():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-#  Step 1: Extract Chinese content
+#  Auth API
 # ═══════════════════════════════════════════════════════════════════════
 
+@app.route("/api/signup", methods=["POST"])
+def api_signup():
+    """Register a new user. Expects JSON: {name, email, password}."""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Invalid request. Send JSON."}), 400
+
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = (data.get("password") or "").strip()
+
+    if not name:
+        return jsonify({"error": "Name is required."}), 400
+    if not email or "@" not in email:
+        return jsonify({"error": "A valid email is required."}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters."}), 400
+
+    user_id, error = db.create_user(name, email, password)
+    if error:
+        return jsonify({"error": error}), 409
+
+    # Log the user in immediately
+    session["user_id"] = user_id
+    session["user_name"] = name
+    session["user_email"] = email
+
+    # Send notification to admin
+    send_email(
+        f"New signup: {name}",
+        f"A new user has signed up on DocTranslator.\n\n"
+        f"Name:  {name}\n"
+        f"Email: {email}\n"
+        f"Time:  {db.get_user_by_id(user_id)['created_at']}\n\n"
+        f"Go to the admin panel to authorize this user:\n"
+        f"  (your domain)/admin\n",
+    )
+
+    logger.info(f"New signup: {name} <{email}>")
+    return jsonify({
+        "success": True,
+        "message": f"Welcome, {name}! Your account has been created. "
+                    "Please complete payment to activate translation access.",
+        "user": {"name": name, "email": email, "is_authorized": False, "balance": 0},
+    }), 201
+
+
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    """Log in with email + password. Expects JSON or form data."""
+    if request.is_json:
+        data = request.get_json()
+        email = (data.get("email") or "").strip().lower()
+        password = data.get("password", "")
+    else:
+        email = (request.form.get("email") or "").strip().lower()
+        password = request.form.get("password", "")
+
+    if not email or not password:
+        return jsonify({"error": "Email and password are required."}), 400
+
+    user = db.get_user_by_email(email)
+    if not user or not db.verify_password(user, password):
+        return jsonify({"error": "Invalid email or password."}), 401
+
+    session["user_id"] = user["id"]
+    session["user_name"] = user["name"]
+    session["user_email"] = user["email"]
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "name": user["name"],
+            "email": user["email"],
+            "is_authorized": bool(user["is_authorized"]),
+            "balance": user["balance"],
+        },
+    })
+
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    """Clear the session."""
+    session.clear()
+    return jsonify({"success": True})
+
+
+@app.route("/api/me")
+def api_me():
+    """Return the currently logged-in user, or null if not logged in."""
+    if "user_id" not in session:
+        return jsonify({"user": None})
+
+    user = db.get_user_by_id(session["user_id"])
+    if not user:
+        session.clear()
+        return jsonify({"user": None})
+
+    return jsonify({
+        "user": {
+            "name": user["name"],
+            "email": user["email"],
+            "is_authorized": bool(user["is_authorized"]),
+            "balance": user["balance"],
+        },
+    })
+
+
+@app.route("/api/payment-confirm", methods=["POST"])
+@login_required
+def api_payment_confirm():
+    """User claims they have paid. Sends email to admin with details."""
+    data = request.get_json(silent=True) or {}
+    amount = data.get("amount", 0)
+
+    user = db.get_user_by_id(session["user_id"])
+    if not user:
+        return jsonify({"error": "Account not found."}), 404
+
+    send_email(
+        f"Payment claim: {user['name']} — ¥{amount}",
+        f"A user claims they have paid via WeChat.\n\n"
+        f"Name:   {user['name']}\n"
+        f"Email:  {user['email']}\n"
+        f"Amount: ¥{amount}\n\n"
+        f"Please verify the payment in WeChat, then authorize this user from the admin panel:\n"
+        f"  (your domain)/admin\n",
+    )
+
+    logger.info(f"Payment confirm: {user['name']} <{user['email']}> amount=¥{amount}")
+    return jsonify({
+        "success": True,
+        "message": "Payment confirmation sent! We will verify and activate your account shortly.",
+    })
+
+
+# ═══════════════════════════════════════════════════════════════════════
+#  Admin
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    """Admin dashboard — password-protected."""
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if password == ADMIN_PASSWORD:
+            session["is_admin"] = True
+        else:
+            return render_template("admin.html", error="Incorrect password.", users=None)
+
+    if not session.get("is_admin"):
+        return render_template("admin.html", error=None, users=None)
+
+    users = db.get_all_users()
+    return render_template("admin.html", error=None, users=users)
+
+
+@app.route("/api/admin/authorize", methods=["POST"])
+def admin_authorize():
+    """Toggle a user's authorization. Admin only."""
+    if not session.get("is_admin"):
+        return jsonify({"error": "Admin access required."}), 403
+
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    authorized = data.get("authorized", True)
+
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    db.set_authorized(user_id, authorized)
+    logger.info(f"Admin: {'authorized' if authorized else 'deauthorized'} user {user['name']} <{user['email']}>")
+    return jsonify({"success": True})
+
+
+@app.route("/api/admin/balance", methods=["POST"])
+def admin_balance():
+    """Adjust a user's balance. Admin only."""
+    if not session.get("is_admin"):
+        return jsonify({"error": "Admin access required."}), 403
+
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    amount = data.get("amount", 0)
+
+    user = db.get_user_by_id(user_id)
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+
+    db.update_balance(user_id, amount)
+    updated = db.get_user_by_id(user_id)
+    logger.info(f"Admin: adjusted balance for {user['name']} by {amount:+d}. New balance: {updated['balance']}")
+    return jsonify({"success": True, "balance": updated["balance"]})
+
+
 @app.route("/api/extract", methods=["POST"])
+@authorized_required
 def extract():
     """Upload .docx → extract Chinese paragraph/table text → return JSON."""
     if "file" not in request.files:
@@ -159,6 +438,7 @@ def extract():
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/api/insert", methods=["POST"])
+@authorized_required
 def insert():
     """Upload .docx + translations.json → insert translations → return bilingual .docx."""
     if "file" not in request.files:
@@ -230,6 +510,7 @@ def insert():
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/api/verify", methods=["POST"])
+@authorized_required
 def verify():
     """Upload translations.json [+ optional content.json] → verify CMC/GMP terminology → return report."""
     if "file" not in request.files:
@@ -282,6 +563,7 @@ def verify():
 # ═══════════════════════════════════════════════════════════════════════
 
 @app.route("/api/translate", methods=["POST"])
+@authorized_required
 def translate():
     """One-click: upload .docx → LLM translate → CMC verify → download bilingual .docx."""
     if not LLM_AVAILABLE:
