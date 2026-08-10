@@ -183,6 +183,7 @@
     <p class="subtitle">Manage users, authorizations, and balances.</p>
 
     <!-- Login -->
+    {% if users is none %}
     <div class="login-card" id="loginCard">
         <h2>Admin Login</h2>
         {% if error %}
@@ -193,6 +194,7 @@
             <button type="submit">Sign in</button>
         </form>
     </div>
+    {% endif %}
 
     <!-- Dashboard -->
     <div class="dashboard {% if users is not none %}active{% endif %}" id="dashboard">
