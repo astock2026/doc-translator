@@ -96,7 +96,11 @@ def get_all_users():
     conn = _connect()
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM users ORDER BY created_at DESC")
+            cur.execute(
+                "SELECT id, name, email, password_hash, is_authorized, balance, "
+                "to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at "
+                "FROM users ORDER BY created_at DESC"
+            )
             rows = cur.fetchall()
         return [dict(r) for r in rows]
     finally:
