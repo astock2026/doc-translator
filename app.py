@@ -65,6 +65,12 @@ LLM_AVAILABLE = bool(LLM_CONFIG["api_key"])
 # ── Session & Security ─────────────────────────────────────────────────
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 
+# Session persistence: keep users logged in for 30 days
+app.config["PERMANENT_SESSION_LIFETIME"] = 2592000  # 30 days in seconds
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
 # ── Email (SMTP) Config ────────────────────────────────────────────────
 SMTP_ENABLED = bool(os.environ.get("SMTP_PASSWORD"))
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp-mail.outlook.com")
