@@ -501,8 +501,9 @@ def insert():
 
         logger.info(f"Insert complete: {output_path}")
 
-        # Deduct balance
+        # Deduct balance and increment count
         db.update_balance(session["user_id"], -COST_PER_TRANSLATION)
+        db.increment_translation_count(session["user_id"])
         updated_user = db.get_user_by_id(session["user_id"])
         logger.info(
             f"Charged ¥{COST_PER_TRANSLATION} to {updated_user['name']}. "
@@ -663,8 +664,9 @@ def translate():
 
         logger.info(f"Pipeline complete: {output_path}")
 
-        # Deduct balance
+        # Deduct balance and increment count
         db.update_balance(session["user_id"], -COST_PER_TRANSLATION)
+        db.increment_translation_count(session["user_id"])
         updated_user = db.get_user_by_id(session["user_id"])
         logger.info(
             f"Charged ¥{COST_PER_TRANSLATION} to {updated_user['name']}. "
