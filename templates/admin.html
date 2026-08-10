@@ -210,6 +210,7 @@
                     <th>Name</th>
                     <th>Email</th>
                     <th>Authorized</th>
+                    <th>Trans.</th>
                     <th>Balance</th>
                     <th>Signed up</th>
                     <th>Actions</th>
@@ -227,6 +228,7 @@
                             {{ 'Yes' if u.is_authorized else 'No' }}
                         </span>
                     </td>
+                    <td>{{ u.translation_count }}</td>
                     <td>&yen;{{ u.balance }}</td>
                     <td>{{ u.created_at[:10] }}</td>
                     <td>

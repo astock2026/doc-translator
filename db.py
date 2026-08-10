@@ -31,9 +31,22 @@ def init_db():
                     email         TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
                     is_authorized BOOLEAN NOT NULL DEFAULT FALSE,
-                    balance       INTEGER NOT NULL DEFAULT 0,
-                    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    balance            INTEGER NOT NULL DEFAULT 0,
+                    translation_count  INTEGER NOT NULL DEFAULT 0,
+                    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+            """)
+            # Migration: add translation_count if missing (for existing DBs)
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='users' AND column_name='translation_count'
+                    ) THEN
+                        ALTER TABLE users ADD COLUMN translation_count INTEGER NOT NULL DEFAULT 0;
+                    END IF;
+                END $$;
             """)
         conn.commit()
     finally:
@@ -97,7 +110,7 @@ def get_all_users():
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, name, email, password_hash, is_authorized, balance, "
+                "SELECT id, name, email, password_hash, is_authorized, balance, translation_count, "
                 "to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at "
                 "FROM users ORDER BY created_at DESC"
             )
@@ -129,6 +142,20 @@ def update_balance(user_id, amount):
             cur.execute(
                 "UPDATE users SET balance = balance + %s WHERE id = %s",
                 (amount, user_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def increment_translation_count(user_id):
+    """Increment the user's translation count by 1."""
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET translation_count = translation_count + 1 WHERE id = %s",
+                (user_id,),
             )
         conn.commit()
     finally:
