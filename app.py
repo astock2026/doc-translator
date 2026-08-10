@@ -17,9 +17,6 @@ import subprocess
 import shutil
 import uuid
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from functools import wraps
 from pathlib import Path
 
@@ -71,12 +68,10 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # ── Email (SMTP) Config ────────────────────────────────────────────────
-SMTP_ENABLED = bool(os.environ.get("SMTP_PASSWORD"))
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.office365.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "adam_j_cheng@hotmail.com")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("SMTP_FROM", "adam_j_cheng@hotmail.com")
+# SendGrid email config (replaces SMTP — Outlook/Hotmail basic auth is dead)
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+SENDGRID_ENABLED = bool(SENDGRID_API_KEY)
+SENDGRID_FROM = os.environ.get("SENDGRID_FROM_EMAIL", "adam_j_cheng@hotmail.com")
 NOTIFY_EMAIL = os.environ.get("NOTIFY_EMAIL", "adam_j_cheng@hotmail.com")
 
 # Admin password for /admin dashboard
@@ -106,26 +101,31 @@ def run_script(script_name, *args, timeout=120):
 # ═══════════════════════════════════════════════════════════════════════
 
 def send_email(subject, body):
-    """Send an email notification to the admin (NOTIFY_EMAIL)."""
-    if not SMTP_ENABLED:
-        logger.warning(f"SMTP not configured (SMTP_PASSWORD empty). Would have sent: {subject}")
+    """Send an email notification to the admin via SendGrid API."""
+    if not SENDGRID_ENABLED:
+        logger.warning(f"SendGrid not configured (SENDGRID_API_KEY empty). Would have sent: {subject}")
         return False
 
-    logger.info(f"Attempting to send email via {SMTP_HOST}:{SMTP_PORT} as {SMTP_USER} to {NOTIFY_EMAIL}")
+    logger.info(f"Attempting to send email via SendGrid: from={SENDGRID_FROM} to={NOTIFY_EMAIL}")
     try:
-        msg = MIMEMultipart()
-        msg["From"] = SMTP_FROM
-        msg["To"] = NOTIFY_EMAIL
-        msg["Subject"] = f"[DocTranslator] {subject}"
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASSWORD)
-            server.send_message(msg)
+        message = Mail(
+            from_email=SENDGRID_FROM,
+            to_emails=NOTIFY_EMAIL,
+            subject=f"[DocTranslator] {subject}",
+            plain_text_content=body,
+        )
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(message)
 
-        logger.info(f"Email sent successfully: {subject}")
-        return True
+        if 200 <= response.status_code < 300:
+            logger.info(f"Email sent successfully: {subject} (status {response.status_code})")
+            return True
+        else:
+            logger.error(f"SendGrid returned status {response.status_code}: {response.body}")
+            return False
     except Exception as e:
         logger.error(f"Failed to send email: {type(e).__name__}: {e}")
         return False
