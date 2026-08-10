@@ -452,7 +452,9 @@
         </a>
         <div class="nav-links">
             <a href="/payment">Payment</a>
-            <a href="/login" class="btn-signin">Sign in</a>
+            <a href="/login" class="btn-signin" id="navSignin">Sign in</a>
+            <span id="navUser" style="display:none;font-weight:600;color:white;"></span>
+            <a href="#" id="navLogout" style="display:none;color:var(--gray-400);font-size:14px;">Sign out</a>
         </div>
     </nav>
 
@@ -588,6 +590,10 @@
         .then(function(data) {
             if (data.user) {
                 currentUser = data.user;
+                document.getElementById('navSignin').style.display = 'none';
+                document.getElementById('navUser').style.display = '';
+                document.getElementById('navUser').textContent = currentUser.name;
+                document.getElementById('navLogout').style.display = '';
                 document.getElementById('loginPrompt').classList.remove('show');
                 document.getElementById('userBar').style.display = 'flex';
                 document.getElementById('paymentContent').style.display = '';
@@ -604,6 +610,13 @@
 
     // Logout
     document.getElementById('logoutLink').addEventListener('click', function(e) {
+        e.preventDefault();
+        fetch('/api/logout', { method: 'POST' })
+            .then(function() { window.location.reload(); });
+    });
+
+    // Navbar logout
+    document.getElementById('navLogout').addEventListener('click', function(e) {
         e.preventDefault();
         fetch('/api/logout', { method: 'POST' })
             .then(function() { window.location.reload(); });
