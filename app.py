@@ -66,7 +66,7 @@ LLM_AVAILABLE = bool(LLM_CONFIG["api_key"])
 app.secret_key = os.environ.get("SECRET_KEY", os.urandom(24).hex())
 
 # Session persistence: keep users logged in for 30 days
-app.config["PERMANENT_SESSION_LIFETIME"] = 2592000  # 30 days in seconds
+app.config["PERMANENT_SESSION_LIFETIME"] = 31536000  # 365 days
 app.config["SESSION_COOKIE_SECURE"] = True
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
