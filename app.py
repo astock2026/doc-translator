@@ -663,6 +663,14 @@ def translate():
 
         logger.info(f"Pipeline complete: {output_path}")
 
+        # Deduct balance
+        db.update_balance(session["user_id"], -COST_PER_TRANSLATION)
+        updated_user = db.get_user_by_id(session["user_id"])
+        logger.info(
+            f"Charged ¥{COST_PER_TRANSLATION} to {updated_user['name']}. "
+            f"Remaining balance: ¥{updated_user['balance']}"
+        )
+
         # Return file + verification report
         response = send_file(
             str(output_path),
