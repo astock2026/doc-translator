@@ -30,10 +30,11 @@ def init_db():
                     name          TEXT NOT NULL,
                     email         TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
-                    is_authorized BOOLEAN NOT NULL DEFAULT FALSE,
-                    balance            INTEGER NOT NULL DEFAULT 0,
-                    translation_count  INTEGER NOT NULL DEFAULT 0,
-                    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    is_authorized       BOOLEAN NOT NULL DEFAULT FALSE,
+                    balance             INTEGER NOT NULL DEFAULT 0,
+                    translation_count   INTEGER NOT NULL DEFAULT 0,
+                    free_translations   INTEGER NOT NULL DEFAULT 3,
+                    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
             """)
             # Migration: add translation_count if missing (for existing DBs)
@@ -45,6 +46,18 @@ def init_db():
                         WHERE table_name='users' AND column_name='translation_count'
                     ) THEN
                         ALTER TABLE users ADD COLUMN translation_count INTEGER NOT NULL DEFAULT 0;
+                    END IF;
+                END $$;
+            """)
+            # Migration: add free_translations if missing (for existing DBs)
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name='users' AND column_name='free_translations'
+                    ) THEN
+                        ALTER TABLE users ADD COLUMN free_translations INTEGER NOT NULL DEFAULT 3;
                     END IF;
                 END $$;
             """)
@@ -110,7 +123,8 @@ def get_all_users():
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, name, email, password_hash, is_authorized, balance, translation_count, "
+                "SELECT id, name, email, password_hash, is_authorized, balance, "
+                "translation_count, free_translations, "
                 "to_char(created_at, 'YYYY-MM-DD HH24:MI:SS') AS created_at "
                 "FROM users ORDER BY created_at DESC"
             )
@@ -155,6 +169,20 @@ def increment_translation_count(user_id):
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE users SET translation_count = translation_count + 1 WHERE id = %s",
+                (user_id,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def decrement_free_translation(user_id):
+    """Decrement the user's free translation count by 1 (min 0)."""
+    conn = _connect()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET free_translations = GREATEST(free_translations - 1, 0) WHERE id = %s",
                 (user_id,),
             )
         conn.commit()

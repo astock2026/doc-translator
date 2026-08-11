@@ -479,7 +479,7 @@
             .then(function(result) {
                 if (result.status === 200) {
                     var u = result.data.user;
-                    if (u.is_authorized) {
+                    if (u.is_authorized || u.free_translations > 0) {
                         window.location.href = '/';
                     } else {
                         window.location.href = '/payment';

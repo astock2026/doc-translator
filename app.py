@@ -142,10 +142,38 @@ def login_required(f):
 
 
 COST_PER_TRANSLATION = 29  # CNY
+FREE_TRANSLATIONS_ON_SIGNUP = 3
+
+
+def charge_translation(user_id):
+    """Charge a single translation: use a free translation if available,
+    otherwise deduct ¥29 from balance. Increments translation_count either way."""
+    user = db.get_user_by_id(user_id)
+    if user and user.get("free_translations", 0) > 0:
+        db.decrement_free_translation(user_id)
+        db.increment_translation_count(user_id)
+        updated = db.get_user_by_id(user_id)
+        logger.info(
+            f"Free translation used by {updated['name']}. "
+            f"Free remaining: {updated['free_translations']}"
+        )
+    else:
+        db.update_balance(user_id, -COST_PER_TRANSLATION)
+        db.increment_translation_count(user_id)
+        updated = db.get_user_by_id(user_id)
+        logger.info(
+            f"Charged ¥{COST_PER_TRANSLATION} to {updated['name']}. "
+            f"Remaining balance: ¥{updated['balance']}"
+        )
+    return updated
 
 
 def authorized_required(f):
-    """Decorator: require user to be logged in, authorized, and have sufficient balance."""
+    """Decorator: require user to be logged in and able to translate.
+
+    A user can translate if they have free_translations > 0 (trial),
+    OR if they are authorized and have sufficient balance.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
         if "user_id" not in session:
@@ -154,9 +182,15 @@ def authorized_required(f):
         if not user:
             session.clear()
             return jsonify({"error": "Account not found."}), 401
+
+        # Free trial translations
+        if user.get("free_translations", 0) > 0:
+            return f(*args, **kwargs)
+
+        # Paid path: must be authorized + have balance
         if not user["is_authorized"]:
             return jsonify({
-                "error": "Your account is not yet authorized. Please complete payment and wait for approval."
+                "error": "Your free translations are used up. Please complete payment to continue."
             }), 403
         if user["balance"] < COST_PER_TRANSLATION:
             return jsonify({
@@ -241,9 +275,15 @@ def api_signup():
     logger.info(f"New signup: {name} <{email}>")
     return jsonify({
         "success": True,
-        "message": f"Welcome, {name}! Your account has been created. "
-                    "Please complete payment to activate translation access.",
-        "user": {"name": name, "email": email, "is_authorized": False, "balance": 0},
+        "message": f"Welcome, {name}! You have {FREE_TRANSLATIONS_ON_SIGNUP} free translations to try. "
+                    "After that, please complete payment to continue.",
+        "user": {
+            "name": name,
+            "email": email,
+            "is_authorized": False,
+            "balance": 0,
+            "free_translations": FREE_TRANSLATIONS_ON_SIGNUP,
+        },
     }), 201
 
 
@@ -269,6 +309,8 @@ def api_login():
     session["user_name"] = user["name"]
     session["user_email"] = user["email"]
 
+    free_t = user.get("free_translations", 0)
+    can_t = free_t > 0 or (bool(user["is_authorized"]) and user["balance"] >= COST_PER_TRANSLATION)
     return jsonify({
         "success": True,
         "user": {
@@ -276,8 +318,9 @@ def api_login():
             "email": user["email"],
             "is_authorized": bool(user["is_authorized"]),
             "balance": user["balance"],
+            "free_translations": free_t,
             "cost_per_translation": COST_PER_TRANSLATION,
-            "can_translate": bool(user["is_authorized"] and user["balance"] >= COST_PER_TRANSLATION),
+            "can_translate": can_t,
         },
     })
 
@@ -300,14 +343,17 @@ def api_me():
         session.clear()
         return jsonify({"user": None})
 
+    free_t = user.get("free_translations", 0)
+    can_t = free_t > 0 or (bool(user["is_authorized"]) and user["balance"] >= COST_PER_TRANSLATION)
     return jsonify({
         "user": {
             "name": user["name"],
             "email": user["email"],
             "is_authorized": bool(user["is_authorized"]),
             "balance": user["balance"],
+            "free_translations": free_t,
             "cost_per_translation": COST_PER_TRANSLATION,
-            "can_translate": bool(user["is_authorized"] and user["balance"] >= COST_PER_TRANSLATION),
+            "can_translate": can_t,
         },
     })
 
@@ -501,14 +547,8 @@ def insert():
 
         logger.info(f"Insert complete: {output_path}")
 
-        # Deduct balance and increment count
-        db.update_balance(session["user_id"], -COST_PER_TRANSLATION)
-        db.increment_translation_count(session["user_id"])
-        updated_user = db.get_user_by_id(session["user_id"])
-        logger.info(
-            f"Charged ¥{COST_PER_TRANSLATION} to {updated_user['name']}. "
-            f"Remaining balance: ¥{updated_user['balance']}"
-        )
+        # Charge: free translation or balance
+        updated_user = charge_translation(session["user_id"])
 
         para_done = sum(1 for p in trans_data.get("paragraphs", []) if p.get("translation", "").strip())
         cell_done = sum(
@@ -664,14 +704,8 @@ def translate():
 
         logger.info(f"Pipeline complete: {output_path}")
 
-        # Deduct balance and increment count
-        db.update_balance(session["user_id"], -COST_PER_TRANSLATION)
-        db.increment_translation_count(session["user_id"])
-        updated_user = db.get_user_by_id(session["user_id"])
-        logger.info(
-            f"Charged ¥{COST_PER_TRANSLATION} to {updated_user['name']}. "
-            f"Remaining balance: ¥{updated_user['balance']}"
-        )
+        # Charge: free translation or balance
+        updated_user = charge_translation(session["user_id"])
 
         # Return file + verification report
         response = send_file(

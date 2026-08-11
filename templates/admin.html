@@ -211,6 +211,7 @@
                     <th>Email</th>
                     <th>Authorized</th>
                     <th>Trans.</th>
+                    <th>Free</th>
                     <th>Balance</th>
                     <th>Signed up</th>
                     <th>Actions</th>
@@ -229,6 +230,7 @@
                         </span>
                     </td>
                     <td>{{ u.translation_count }}</td>
+                    <td>{{ u.free_translations }}</td>
                     <td>&yen;{{ u.balance }}</td>
                     <td>{{ u.created_at[:10] }}</td>
                     <td>
