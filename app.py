@@ -567,7 +567,11 @@ def insert():
 
     except Exception as e:
         logger.exception("Insert failed")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": "This model is currently experiencing high demand. "
+                     "This spike in demand is usually temporary. "
+                     "Please try again later."
+        }), 503
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
 
@@ -726,7 +730,11 @@ def translate():
 
     except Exception as e:
         logger.exception("Translate pipeline failed")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "error": "This model is currently experiencing high demand. "
+                     "This spike in demand is usually temporary. "
+                     "Please try again later."
+        }), 503
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
 
