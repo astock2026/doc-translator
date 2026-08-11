@@ -463,7 +463,6 @@
         <span class="user-info">Signed in as <strong id="userName"></strong> (<span id="userEmail"></span>)</span>
         <span>
             <span class="user-balance">Balance: <span id="userBalance">¥0</span></span>
-            <a href="#" id="logoutLink" style="margin-left:14px;">Sign out</a>
         </span>
     </div>
 
@@ -487,7 +486,6 @@
     <!-- Top-up card -->
     <div class="topup-card">
         <h3>Select amount</h3>
-        <p class="topup-subtitle">¥29 translates one document. Save more for bulk translations.</p>
 
         <div class="amount-options" id="amountOptions">
             <div class="amount-option selected" data-amount="29" data-docs="1">
@@ -607,13 +605,6 @@
                 document.getElementById('confirmArea').classList.remove('show');
             }
         });
-
-    // Logout
-    document.getElementById('logoutLink').addEventListener('click', function(e) {
-        e.preventDefault();
-        fetch('/api/logout', { method: 'POST' })
-            .then(function() { window.location.reload(); });
-    });
 
     // Navbar logout
     document.getElementById('navLogout').addEventListener('click', function(e) {
