@@ -452,6 +452,13 @@ def admin_balance():
     db.update_balance(user_id, amount)
     updated = db.get_user_by_id(user_id)
     logger.info(f"Admin: adjusted balance for {user['name']} by {amount:+d}. New balance: {updated['balance']}")
+
+    # Auto-re-authorize if balance is now sufficient and user was deauthorized
+    if updated["balance"] >= COST_PER_TRANSLATION and not updated["is_authorized"]:
+        db.set_authorized(user_id, True)
+        updated = db.get_user_by_id(user_id)
+        logger.info(f"Auto-reauthorized {updated['name']} — balance ¥{updated['balance']} ≥ ¥{COST_PER_TRANSLATION}")
+
     return jsonify({"success": True, "balance": updated["balance"]})
 
 
