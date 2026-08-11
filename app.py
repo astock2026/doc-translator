@@ -147,7 +147,8 @@ FREE_TRANSLATIONS_ON_SIGNUP = 3
 
 def charge_translation(user_id):
     """Charge a single translation: use a free translation if available,
-    otherwise deduct ¥29 from balance. Increments translation_count either way."""
+    otherwise deduct ¥29 from balance. Increments translation_count either way.
+    If balance drops below ¥29 after charging, auto-deauthorize the user."""
     user = db.get_user_by_id(user_id)
     if user and user.get("free_translations", 0) > 0:
         db.decrement_free_translation(user_id)
@@ -165,6 +166,14 @@ def charge_translation(user_id):
             f"Charged ¥{COST_PER_TRANSLATION} to {updated['name']}. "
             f"Remaining balance: ¥{updated['balance']}"
         )
+        # Auto-deauthorize if balance can't cover another translation
+        if updated["balance"] < COST_PER_TRANSLATION and updated["is_authorized"]:
+            db.set_authorized(user_id, False)
+            updated = db.get_user_by_id(user_id)
+            logger.info(
+                f"Auto-deauthorized {updated['name']} — balance ¥{updated['balance']} "
+                f"is below ¥{COST_PER_TRANSLATION}"
+            )
     return updated
 
 
