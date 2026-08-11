@@ -132,6 +132,37 @@
         .badge-yes { background: var(--success-bg); color: var(--success); }
         .badge-no { background: var(--warning-bg); color: var(--warning); }
 
+        /* Toggle switch */
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+            vertical-align: middle;
+        }
+        .toggle input { display: none; }
+        .toggle .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #cbd5e1;
+            border-radius: 22px;
+            transition: background 0.2s;
+        }
+        .toggle .slider::before {
+            content: '';
+            position: absolute;
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        .toggle input:checked + .slider { background: var(--success); }
+        .toggle input:checked + .slider::before { transform: translateX(18px); }
+
         .btn-sm {
             padding: 5px 12px;
             border-radius: 6px;
@@ -225,21 +256,18 @@
                     <td>{{ u.name }}</td>
                     <td>{{ u.email }}</td>
                     <td>
-                        <span class="badge {% if u.is_authorized %}badge-yes{% else %}badge-no{% endif %}">
-                            {{ 'Yes' if u.is_authorized else 'No' }}
-                        </span>
+                        <label class="toggle">
+                            <input type="checkbox" {% if u.is_authorized %}checked{% endif %}
+                                   onchange="toggleAuth({{ u.id }}, this.checked)">
+                            <span class="slider"></span>
+                        </label>
                     </td>
                     <td>{{ u.translation_count }}</td>
                     <td>{{ u.free_translations }}</td>
                     <td>&yen;{{ u.balance }}</td>
                     <td>{{ u.created_at[:10] }}</td>
                     <td>
-                        {% if u.is_authorized %}
-                        <button class="btn-sm deauthorize" onclick="toggleAuth({{ u.id }}, false)">Revoke</button>
-                        {% else %}
-                        <button class="btn-sm authorize" onclick="toggleAuth({{ u.id }}, true)">Authorize</button>
-                        {% endif %}
-                        <input type="number" class="balance-input" id="bal-{{ u.id }}" value="0" style="width:56px;margin-left:6px;">
+                        <input type="number" class="balance-input" id="bal-{{ u.id }}" value="0" style="width:56px;">
                         <button class="btn-sm" onclick="adjustBalance({{ u.id }})">Adjust</button>
                     </td>
                 </tr>
@@ -277,9 +305,11 @@
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.success) {
-                location.reload();
+                showToast(authorize ? 'User authorized.' : 'User revoked.');
+                updateStats();
             } else {
                 showToast(data.error || 'Failed.');
+                location.reload();
             }
         });
     };
@@ -304,13 +334,16 @@
         });
     };
 
-    // Stats
-    var rows = document.querySelectorAll('#userTable tr');
-    var authCount = 0;
-    rows.forEach(function(r) {
-        if (r.querySelector('.badge-yes')) authCount++;
-    });
-    document.getElementById('statsText').textContent = rows.length + ' users, ' + authCount + ' authorized';
+    function updateStats() {
+        var rows = document.querySelectorAll('#userTable tr');
+        var authCount = 0;
+        rows.forEach(function(r) {
+            var cb = r.querySelector('.toggle input');
+            if (cb && cb.checked) authCount++;
+        });
+        document.getElementById('statsText').textContent = rows.length + ' users, ' + authCount + ' authorized';
+    }
+    updateStats();
 })();
 </script>
 </body>
