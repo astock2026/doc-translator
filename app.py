@@ -29,6 +29,7 @@ from flask import (
     Flask, render_template, request, jsonify, send_file, session, redirect, url_for
 )
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import HTTPException
 
 import db
 
@@ -57,6 +58,40 @@ app.config["UPLOAD_FOLDER"] = str(Path(__file__).parent / "uploads")
 app.config["OUTPUT_FOLDER"] = str(Path(__file__).parent / "outputs")
 
 app.config["TEMPLATES_AUTO_RELOAD"] = True  # re-read templates from disk every request
+
+# ── Friendly error message (product rule) ───────────────────────────────
+FRIENDLY_ERROR = (
+    "The model is experiencing high demand. "
+    "Spikes in demand are usually temporary. "
+    "Please try again later."
+)
+
+
+def friendly_error_response(exc, status=503):
+    """JSON response with the friendly message + hidden diagnostic header.
+
+    The body only shows the friendly message (product rule); the real cause
+    rides along in X-Error-Detail (redacted, truncated) for DevTools.
+    """
+    resp = jsonify({"error": FRIENDLY_ERROR})
+    resp.status_code = status
+    resp.headers["X-Error-Detail"] = _safe_error_detail(exc)
+    return resp
+
+
+@app.errorhandler(Exception)
+def handle_unhandled_exception(exc):
+    """Global catch-all: any unhandled error becomes the friendly message.
+
+    Without this, an exception outside a route's try/except (e.g. upload
+    folder setup) bubbles up as Flask's default 500 HTML page and the user
+    sees 'Server error (500)' with no diagnostic. HTTP-level errors (404,
+    405, 413...) keep their default behavior.
+    """
+    if isinstance(exc, HTTPException):
+        return exc
+    logger.exception("Unhandled exception")
+    return friendly_error_response(exc, status=500)
 
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["OUTPUT_FOLDER"], exist_ok=True)
