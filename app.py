@@ -999,6 +999,7 @@ def correct_apply():
             str(input_path),
             str(corr_path),
             "--output", str(output_path),
+            "--track-changes",
         )
 
         logger.info(f"Correction apply complete: {output_path}")
