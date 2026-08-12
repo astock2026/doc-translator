@@ -611,7 +611,7 @@
     <div class="hero">
         <div class="hero-badge">CMC · GMP · Regulatory</div>
         <h1>Bilingual Document Generator</h1>
-        <p>Translate Chinese SOPs and GMP documents to natural professional English — or correct the English in your existing bilingual documents using FDA, EMA, and ICH terminology.</p>
+        <p id="hero-subtitle">Translate Chinese SOPs and GMP documents to natural professional English using FDA, EMA and ICH terminology.</p>
     </div>
 
     <!-- Mode toggle -->
@@ -864,6 +864,11 @@ document.getElementById('navLogout').addEventListener('click', function(e) {
     var modeButtons = document.querySelectorAll('.mode-toggle button');
     var translateSection = document.getElementById('upload-section');
     var correctSection = document.getElementById('corr-section');
+    var heroSubtitle = document.getElementById('hero-subtitle');
+    var MODE_SUBTITLES = {
+        translate: 'Translate Chinese SOPs and GMP documents to natural professional English using FDA, EMA and ICH terminology.',
+        correct: 'Correct the English in your existing bilingual documents using FDA, EMA and ICH terminology.'
+    };
 
     function setMode(mode) {
         modeButtons.forEach(function(b) {
@@ -873,6 +878,7 @@ document.getElementById('navLogout').addEventListener('click', function(e) {
         });
         translateSection.classList.toggle('hidden', mode !== 'translate');
         correctSection.classList.toggle('hidden', mode !== 'correct');
+        heroSubtitle.textContent = MODE_SUBTITLES[mode] || MODE_SUBTITLES.translate;
     }
 
     modeButtons.forEach(function(b) {
