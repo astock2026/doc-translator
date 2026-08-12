@@ -868,7 +868,6 @@
 
         <!-- Correction review -->
         <div class="review-card" id="corr-review-card">
-            <div id="corr-review-badge"></div>
             <h3>📝 Review and edit corrections</h3>
             <p class="review-desc">
                 The model flagged the segments below as inaccurate or needing review.
@@ -889,7 +888,6 @@
         <!-- Correction result -->
         <div class="result-card" id="corr-result-card">
             <h3>Correction complete</h3>
-            <div id="corr-verify-badge"></div>
             <a id="corr-download-btn" class="btn btn-primary" href="#" download>
                 Download corrected .docx
             </a>
@@ -1319,8 +1317,6 @@ let corrFile = null;
 let corrCorrections = null;
 let corrSegments = [];
 let corrBaseName = '';
-let corrCmcScore = null;
-let corrBadgeHtml = '';
 
 corrUploadArea.addEventListener('click', () => corrFileInput.click());
 corrUploadArea.addEventListener('dragover', e => { e.preventDefault(); corrUploadArea.classList.add('dragover'); });
@@ -1409,10 +1405,9 @@ async function startCorrection() {
         const score = data.score;
         const status = data.status;
         const corrected = (data.stats && data.stats.corrected) || '?';
-        corrCmcScore = data.cmc_score;
 
         setCPhase('correct', 'done', `${corrected} segment(s) corrected`);
-        setCPhase('verify', 'done', score != null ? `Score: ${score}/100` : 'Done');
+        setCPhase('verify', 'done', 'Verified');
 
         // Store for the review + apply phase
         corrCorrections = data.corrections;
@@ -1430,22 +1425,8 @@ async function startCorrection() {
 }
 
 function showCorrectionReview(score, status, data) {
-    var badgeEl = document.getElementById('corr-review-badge');
     var segContainer = document.getElementById('corr-segments');
     var note = document.getElementById('corr-review-note');
-
-    // Score badge
-    var badgeHtml = '';
-    if (score != null && status) {
-        var s = parseInt(score);
-        var cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
-        var label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
-        var extra = '';
-        if (corrCmcScore != null) extra = ' \u00b7 CMC/GMP ' + corrCmcScore + '/100';
-        badgeHtml = '<span class="verify-badge ' + cls + '">Accuracy vs Chinese: ' + s + '/100 \u2014 ' + label + extra + '</span>';
-    }
-    badgeEl.innerHTML = badgeHtml;
-    corrBadgeHtml = badgeHtml;
 
     // Sort segments: FAIL first, then REVIEW, then PASS
     var order = { 'FAIL': 0, 'REVIEW': 1, 'PASS': 2 };
@@ -1585,9 +1566,6 @@ async function buildCorrectedDoc(editedCorrections) {
         corrProgress.classList.remove('visible');
         corrResultCard.classList.add('visible');
 
-        // Show score badge on result card
-        document.getElementById('corr-verify-badge').innerHTML = corrBadgeHtml || '';
-
         dl.click();
         refreshFreeBadge();
 
@@ -1616,8 +1594,6 @@ function resetCorrection() {
     corrCorrections = null;
     corrSegments = [];
     corrBaseName = '';
-    corrCmcScore = null;
-    corrBadgeHtml = '';
     corrFileInput.value = '';
     corrUploadArea.classList.remove('hidden');
     corrFileCard.classList.remove('visible');
