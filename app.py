@@ -3,7 +3,7 @@ Document Translator — Skill-quality bilingual .docx translation
 ==============================================================
 Three modes:
   1. Manual two-step:  extract → (user translates) → insert
-  2. Auto pipeline:     extract → LLM translate → CMC verify → insert
+  2. Auto pipeline:     extract → LLM translate → CMC verify → proper-noun review (user confirms) → insert
   3. Verification only: verify translations.json against CMC glossary
 
 Powered by the bilingual-docx-translate skill pipeline.
@@ -652,7 +652,12 @@ def verify():
 @app.route("/api/translate", methods=["POST"])
 @authorized_required
 def translate():
-    """One-click: upload .docx → LLM translate → CMC verify → download bilingual .docx."""
+    """Upload .docx → LLM translate → CMC verify → extract proper nouns for review.
+
+    Stops BEFORE inserting into the document. Returns JSON with the
+    verification report, the proper-noun review table, and the full
+    translations so the client can let the user edit proper nouns and
+    then call /api/insert to finish the job (and be charged)."""
     if not LLM_AVAILABLE:
         return jsonify({
             "error": "LLM not configured. Set LLM_API_KEY environment variable.\n"
@@ -668,9 +673,7 @@ def translate():
 
     job_id = uuid.uuid4().hex[:8]
     work_dir = Path(app.config["UPLOAD_FOLDER"]) / job_id
-    output_dir = Path(app.config["OUTPUT_FOLDER"]) / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         base_name = secure_filename(file.filename).rsplit(".", 1)[0]
@@ -712,37 +715,38 @@ def translate():
         with open(report_path, "r", encoding="utf-8") as f:
             report = json.load(f)
 
-        # Phase 4: Insert
-        logger.info("[Phase 4/4] Inserting translations into document...")
-        output_path = output_dir / f"{base_name}_Bilingual.docx"
+        # Phase 4: Extract proper nouns for user review (before inserting)
+        logger.info("[Phase 4/4] Extracting proper nouns for review...")
+        nouns_path = work_dir / "proper_nouns.json"
         run_script(
-            "insert_translations_safe.py",
-            str(input_path),
-            str(trans_path),
-            "--output", str(output_path),
+            "extract_proper_nouns.py", str(trans_path),
+            "--output", str(nouns_path),
+            timeout=300,  # 5 min for noun extraction
         )
+        with open(nouns_path, "r", encoding="utf-8") as f:
+            proper_nouns = json.load(f)
 
-        logger.info(f"Pipeline complete: {output_path}")
+        with open(trans_path, "r", encoding="utf-8") as f:
+            translations = json.load(f)
 
-        # Charge: free translation or balance
-        updated_user = charge_translation(session["user_id"])
+        logger.info(f"Pipeline ready for review: {len(proper_nouns)} proper nouns")
 
-        # Return file + verification report
-        response = send_file(
-            str(output_path),
-            as_attachment=True,
-            download_name=f"{base_name}_Bilingual.docx",
-            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
-        response.headers["X-Verification-Score"] = str(report["score"])
-        response.headers["X-Verification-Status"] = report["status"]
-        response.headers["X-Verification-Issues"] = str(report["issues_found"])
-        response.headers["X-Stats"] = json.dumps({
-            "paragraphs": para_count,
-            "table_cells": cell_count,
-            "translated": para_count + cell_count,
+        return jsonify({
+            "success": True,
+            "base_name": base_name,
+            "report": {
+                "score": report.get("score"),
+                "status": report.get("status"),
+                "issues_found": report.get("issues_found", 0),
+            },
+            "proper_nouns": proper_nouns,
+            "translations": translations,
+            "stats": {
+                "paragraphs": para_count,
+                "table_cells": cell_count,
+                "translated": para_count + cell_count,
+            },
         })
-        return response
 
     except Exception as e:
         logger.exception("Translate pipeline failed")
