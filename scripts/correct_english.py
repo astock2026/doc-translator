@@ -166,6 +166,9 @@ def _call_openai_batch(pairs, api_base, api_key, model, system_prompt, user_intr
             if e.code == 429 and attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** (attempt + 1))
                 continue
+            if e.code == 503 and attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** (attempt + 1) * 5)  # overload spike; API says temporary
+                continue
             raise RuntimeError(f"LLM API error {e.code}: {body[:500]}")
         except URLError as e:
             if attempt < MAX_RETRIES - 1:
@@ -202,6 +205,9 @@ def _call_gemini_batch(pairs, api_key, model, system_prompt, user_intro):
             body = e.read().decode("utf-8") if e.fp else ""
             if e.code == 429 and attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** (attempt + 1) * 3)
+                continue
+            if e.code == 503 and attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** (attempt + 1) * 5)  # overload spike; Gemini says temporary
                 continue
             raise RuntimeError(f"Gemini API error {e.code}: {body[:500]}")
         except URLError as e:
