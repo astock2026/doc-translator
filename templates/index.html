@@ -494,23 +494,48 @@
         .free-badge {
             display: none;
             align-items: center;
-            gap: 8px;
-            padding: 10px 16px;
-            background: var(--blue-50);
+            gap: 10px;
+            padding: 6px 8px;
+            background: linear-gradient(135deg, var(--blue-50), #ffffff);
             border: 1px solid var(--blue-100);
-            border-radius: var(--radius-sm);
-            margin-bottom: 16px;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--blue-600);
+            border-radius: 999px;
+            margin-bottom: 18px;
         }
         .free-badge.visible { display: flex; }
         .free-badge .free-icon {
-            font-size: 16px;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--blue-600);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .free-badge .free-icon svg {
+            width: 14px;
+            height: 14px;
+        }
+        .free-badge .free-text {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.2px;
+            color: var(--text-secondary);
         }
         .free-badge .free-count {
+            min-width: 30px;
+            height: 26px;
+            padding: 0 10px;
+            border-radius: 999px;
+            background: var(--blue-600);
+            color: #fff;
             font-weight: 700;
-            font-size: 15px;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         @media (max-width: 500px) {
@@ -552,8 +577,13 @@
     <!-- Upload -->
     <div class="main-card" id="upload-section">
         <div class="free-badge" id="free-badge">
-            <span class="free-icon">🎁</span>
-            <span><span class="free-count" id="free-count">0</span> free translation(s) remaining</span>
+            <span class="free-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2.5l2.2 6.4 6.8 2.1-6.8 2.1L12 19.5l-2.2-6.4L3 11l6.8-2.1z"/>
+                </svg>
+            </span>
+            <span class="free-text">Free translations remaining</span>
+            <span class="free-count" id="free-count">0</span>
         </div>
         <div class="lang-badge">
             <span class="dot"></span>
