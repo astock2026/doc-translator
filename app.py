@@ -824,7 +824,11 @@ def translate():
 def correct():
     """Upload a bilingual .docx → correct the existing English as a CMC,
     Regulatory & Quality expert (FDA/EMA/ICH terminology) → verify the
-    corrected English against the Chinese above → return corrected .docx."""
+    corrected English against the Chinese above → return JSON with
+    per-segment verdicts and the corrections data for client-side editing.
+
+    The client shows problematic segments for user review/editing, then calls
+    /api/correct-apply to build and download the final .docx."""
     if not LLM_AVAILABLE:
         return jsonify({
             "error": "LLM not configured. Set LLM_API_KEY environment variable.\n"
@@ -840,9 +844,7 @@ def correct():
 
     job_id = uuid.uuid4().hex[:8]
     work_dir = Path(app.config["UPLOAD_FOLDER"]) / job_id
-    output_dir = Path(app.config["OUTPUT_FOLDER"]) / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         base_name = secure_filename(file.filename).rsplit(".", 1)[0]
@@ -850,7 +852,7 @@ def correct():
         file.save(str(input_path))
 
         # Phase 1: Extract
-        logger.info("[Correct Phase 1/4] Extracting content...")
+        logger.info("[Correct Phase 1/3] Extracting content...")
         content_path = work_dir / "content.json"
         run_script("extract_paragraphs.py", str(input_path), "--output", str(content_path))
 
@@ -865,7 +867,7 @@ def correct():
         )
 
         # Phase 2: Correct English via LLM (CMC/Regulatory/Quality expert)
-        logger.info("[Correct Phase 2/4] Correcting English via LLM...")
+        logger.info("[Correct Phase 2/3] Correcting English via LLM...")
         corr_path = work_dir / "corrections.json"
         run_script(
             "correct_english.py", str(content_path), "--output", str(corr_path),
@@ -892,7 +894,7 @@ def correct():
             }), 422
 
         # Phase 3: Verify — LLM accuracy check vs Chinese + CMC glossary check
-        logger.info(f"[Correct Phase 3/4] Verifying {corrected_count} corrections against Chinese...")
+        logger.info(f"[Correct Phase 3/3] Verifying {corrected_count} corrections against Chinese...")
         report_path = work_dir / "report.json"
         run_script(
             "correct_english.py", str(corr_path), "--verify", "--output", str(report_path),
@@ -915,8 +917,82 @@ def correct():
         except Exception as e:
             logger.warning(f"CMC glossary check failed (non-fatal): {e}")
 
-        # Phase 4: Replace English in the document with the corrected version
-        logger.info("[Correct Phase 4/4] Building corrected document...")
+        logger.info(f"Correction verified: score={report.get('score')}, status={report.get('status')}")
+
+        return jsonify({
+            "success": True,
+            "base_name": base_name,
+            "score": report.get("score", 0),
+            "status": report.get("status", "REVIEW"),
+            "summary": report.get("summary", ""),
+            "cmc_score": cmc_score,
+            "total_segments": report.get("total_checked", 0),
+            "fail_count": report.get("warnings", 0),
+            "review_count": report.get("info", 0),
+            "segments": report.get("segments", []),
+            "corrections": corrections,
+            "stats": {
+                "corrected": corrected_count,
+                "paragraphs": para_count,
+                "table_cells": cell_count,
+            },
+        })
+
+    except Exception as e:
+        logger.exception("Correction pipeline failed")
+        resp = jsonify({
+            "error": "The model is experiencing high demand. "
+                     "Spikes in demand are usually temporary. "
+                     "Please try again later."
+        })
+        resp.status_code = 503
+        resp.headers["X-Error-Detail"] = _safe_error_detail(e)
+        return resp
+    finally:
+        shutil.rmtree(str(work_dir), ignore_errors=True)
+
+
+@app.route("/api/correct-apply", methods=["POST"])
+@authorized_required
+def correct_apply():
+    """Build the corrected .docx from user-edited corrections data.
+
+    Receives:
+      - file: the original .docx file
+      - corrections: the (potentially edited) corrections JSON
+    Returns: the corrected .docx as a download."""
+    if "file" not in request.files:
+        return jsonify({"error": "No .docx file uploaded"}), 400
+    if "corrections" not in request.files:
+        return jsonify({"error": "No corrections JSON uploaded"}), 400
+
+    docx_file = request.files["file"]
+    corr_file = request.files["corrections"]
+
+    if not docx_file.filename or not docx_file.filename.lower().endswith(".docx"):
+        return jsonify({"error": "Invalid .docx file"}), 400
+    if not corr_file.filename or not corr_file.filename.lower().endswith(".json"):
+        return jsonify({"error": "Invalid corrections file (must be .json)"}), 400
+
+    job_id = uuid.uuid4().hex[:8]
+    work_dir = Path(app.config["UPLOAD_FOLDER"]) / job_id
+    output_dir = Path(app.config["OUTPUT_FOLDER"]) / job_id
+    work_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        base_name = secure_filename(docx_file.filename).rsplit(".", 1)[0]
+        input_path = work_dir / secure_filename(docx_file.filename)
+        docx_file.save(str(input_path))
+
+        corr_path = work_dir / "corrections.json"
+        corr_file.save(str(corr_path))
+
+        with open(corr_path, "r", encoding="utf-8") as f:
+            corr_data = json.load(f)
+        if "paragraphs" not in corr_data:
+            return jsonify({"error": "corrections JSON must have 'paragraphs' key"}), 400
+
         output_path = output_dir / f"{base_name}_Corrected.docx"
         run_script(
             "insert_corrections_safe.py",
@@ -925,30 +1001,20 @@ def correct():
             "--output", str(output_path),
         )
 
-        logger.info(f"Correction complete: {output_path}")
+        logger.info(f"Correction apply complete: {output_path}")
 
         # Charge: free translation or balance
         charge_translation(session["user_id"])
 
-        response = send_file(
+        return send_file(
             str(output_path),
             as_attachment=True,
             download_name=f"{base_name}_Corrected.docx",
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        response.headers["X-Verification-Score"] = str(report.get("score", 0))
-        response.headers["X-Verification-Status"] = report.get("status", "REVIEW")
-        response.headers["X-Verification-Issues"] = str(report.get("issues_found", 0))
-        response.headers["X-Stats"] = json.dumps({
-            "corrected": corrected_count,
-            "paragraphs": para_count,
-            "table_cells": cell_count,
-            "cmc_score": cmc_score,
-        })
-        return response
 
     except Exception as e:
-        logger.exception("Correction pipeline failed")
+        logger.exception("Correction apply failed")
         resp = jsonify({
             "error": "The model is experiencing high demand. "
                      "Spikes in demand are usually temporary. "
