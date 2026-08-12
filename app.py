@@ -5,6 +5,7 @@ Three modes:
   1. Manual two-step:  extract → (user translates) → insert
   2. Auto pipeline:     extract → LLM translate → CMC verify → proper-noun review (user confirms) → insert
   3. Verification only: verify translations.json against CMC glossary
+  4. English correction: extract → LLM correct (CMC/Regulatory/Quality, FDA/EMA/ICH) → verify vs Chinese → replace
 
 Powered by the bilingual-docx-translate skill pipeline.
 LLM translation uses OpenAI-compatible API (DeepSeek, OpenAI, etc.)
@@ -760,6 +761,149 @@ def translate():
 
 
 # ═══════════════════════════════════════════════════════════════════════
+#  English Correction: Extract → LLM Correct → Verify → Replace
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.route("/api/correct", methods=["POST"])
+@authorized_required
+def correct():
+    """Upload a bilingual .docx → correct the existing English as a CMC,
+    Regulatory & Quality expert (FDA/EMA/ICH terminology) → verify the
+    corrected English against the Chinese above → return corrected .docx."""
+    if not LLM_AVAILABLE:
+        return jsonify({
+            "error": "LLM not configured. Set LLM_API_KEY environment variable.\n"
+                     "Get a free key at https://platform.deepseek.com/api_keys"
+        }), 503
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if not file.filename or not file.filename.lower().endswith(".docx"):
+        return jsonify({"error": "Only .docx files are supported"}), 400
+
+    job_id = uuid.uuid4().hex[:8]
+    work_dir = Path(app.config["UPLOAD_FOLDER"]) / job_id
+    output_dir = Path(app.config["OUTPUT_FOLDER"]) / job_id
+    work_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        base_name = secure_filename(file.filename).rsplit(".", 1)[0]
+        input_path = work_dir / secure_filename(file.filename)
+        file.save(str(input_path))
+
+        # Phase 1: Extract
+        logger.info("[Correct Phase 1/4] Extracting content...")
+        content_path = work_dir / "content.json"
+        run_script("extract_paragraphs.py", str(input_path), "--output", str(content_path))
+
+        with open(content_path, "r", encoding="utf-8") as f:
+            content = json.load(f)
+
+        para_count = len(content.get("paragraphs", []))
+        cell_count = sum(
+            len(row.get("cells", []))
+            for t in content.get("tables", [])
+            for row in t.get("rows", [])
+        )
+
+        # Phase 2: Correct English via LLM (CMC/Regulatory/Quality expert)
+        logger.info("[Correct Phase 2/4] Correcting English via LLM...")
+        corr_path = work_dir / "corrections.json"
+        run_script(
+            "correct_english.py", str(content_path), "--output", str(corr_path),
+            timeout=600,  # 10 min for LLM correction
+        )
+
+        with open(corr_path, "r", encoding="utf-8") as f:
+            corrections = json.load(f)
+
+        corrected_count = len(corrections.get("paragraphs", [])) + sum(
+            1
+            for t in corrections.get("tables", [])
+            for r in t.get("rows", [])
+            for c in r.get("cells", [])
+        )
+
+        if corrected_count == 0:
+            return jsonify({
+                "error": "We couldn't find Chinese-English pairs to correct. "
+                         "This feature improves existing English in bilingual "
+                         "documents (Chinese text with English below it). "
+                         "If your document is Chinese-only, use the Translation "
+                         "feature above to create a bilingual document first."
+            }), 422
+
+        # Phase 3: Verify — LLM accuracy check vs Chinese + CMC glossary check
+        logger.info(f"[Correct Phase 3/4] Verifying {corrected_count} corrections against Chinese...")
+        report_path = work_dir / "report.json"
+        run_script(
+            "correct_english.py", str(corr_path), "--verify", "--output", str(report_path),
+            timeout=600,  # 10 min for LLM verification pass
+        )
+        with open(report_path, "r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        cmc_score = None
+        try:
+            cmc_report_path = work_dir / "cmc_report.json"
+            run_script(
+                "verify_cmc.py", str(corr_path),
+                "--content", str(content_path),
+                "--output", str(cmc_report_path),
+                timeout=30,
+            )
+            with open(cmc_report_path, "r", encoding="utf-8") as f:
+                cmc_score = json.load(f).get("score")
+        except Exception as e:
+            logger.warning(f"CMC glossary check failed (non-fatal): {e}")
+
+        # Phase 4: Replace English in the document with the corrected version
+        logger.info("[Correct Phase 4/4] Building corrected document...")
+        output_path = output_dir / f"{base_name}_Corrected.docx"
+        run_script(
+            "insert_corrections_safe.py",
+            str(input_path),
+            str(corr_path),
+            "--output", str(output_path),
+        )
+
+        logger.info(f"Correction complete: {output_path}")
+
+        # Charge: free translation or balance
+        charge_translation(session["user_id"])
+
+        response = send_file(
+            str(output_path),
+            as_attachment=True,
+            download_name=f"{base_name}_Corrected.docx",
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        response.headers["X-Verification-Score"] = str(report.get("score", 0))
+        response.headers["X-Verification-Status"] = report.get("status", "REVIEW")
+        response.headers["X-Verification-Issues"] = str(report.get("issues_found", 0))
+        response.headers["X-Stats"] = json.dumps({
+            "corrected": corrected_count,
+            "paragraphs": para_count,
+            "table_cells": cell_count,
+            "cmc_score": cmc_score,
+        })
+        return response
+
+    except Exception as e:
+        logger.exception("Correction pipeline failed")
+        return jsonify({
+            "error": "This model is currently experiencing high demand. "
+                     "This spike in demand is usually temporary. "
+                     "Please try again later."
+        }), 503
+    finally:
+        shutil.rmtree(str(work_dir), ignore_errors=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 #  Pipeline Status
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -774,6 +918,8 @@ def status():
             "insert": os.path.exists(SCRIPTS_DIR / "insert_translations_safe.py"),
             "translate_llm": os.path.exists(SCRIPTS_DIR / "translate_llm.py"),
             "verify_cmc": os.path.exists(SCRIPTS_DIR / "verify_cmc.py"),
+            "correct_english": os.path.exists(SCRIPTS_DIR / "correct_english.py"),
+            "insert_corrections": os.path.exists(SCRIPTS_DIR / "insert_corrections_safe.py"),
         },
     })
 
