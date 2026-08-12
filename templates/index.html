@@ -380,6 +380,29 @@
 
         .hidden { display: none !important; }
 
+        /* Free translations badge */
+        .free-badge {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: var(--blue-50);
+            border: 1px solid var(--blue-100);
+            border-radius: var(--radius-sm);
+            margin-bottom: 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--blue-600);
+        }
+        .free-badge.visible { display: flex; }
+        .free-badge .free-icon {
+            font-size: 16px;
+        }
+        .free-badge .free-count {
+            font-weight: 700;
+            font-size: 15px;
+        }
+
         @media (max-width: 500px) {
             .container { padding: 30px 14px 24px; }
             .hero h1 { font-size: 20px; }
@@ -418,6 +441,10 @@
 
     <!-- Upload -->
     <div class="main-card" id="upload-section">
+        <div class="free-badge" id="free-badge">
+            <span class="free-icon">🎁</span>
+            <span><span class="free-count" id="free-count">0</span> free translation(s) remaining</span>
+        </div>
         <div class="lang-badge">
             <span class="dot"></span>
             Chinese → English
@@ -505,8 +532,30 @@ fetch('/api/me')
             document.getElementById('navUser').style.display = '';
             document.getElementById('navUser').textContent = data.user.name;
             document.getElementById('navLogout').style.display = '';
+            updateFreeBadge(data.user.free_translations);
         }
     });
+
+function updateFreeBadge(count) {
+    var badge = document.getElementById('free-badge');
+    var countEl = document.getElementById('free-count');
+    if (count > 0) {
+        countEl.textContent = count;
+        badge.classList.add('visible');
+    } else {
+        badge.classList.remove('visible');
+    }
+}
+
+function refreshFreeBadge() {
+    fetch('/api/me')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.user) {
+                updateFreeBadge(data.user.free_translations);
+            }
+        });
+}
 
 document.getElementById('navLogout').addEventListener('click', function(e) {
     e.preventDefault();
@@ -664,6 +713,9 @@ async function startTranslation() {
         resultCard.classList.add('visible');
 
         dl.click();
+
+        // Refresh free-translation count after a successful translation
+        refreshFreeBadge();
 
     } catch(e) {
         progressSection.classList.remove('visible');
