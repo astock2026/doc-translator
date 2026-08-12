@@ -60,6 +60,7 @@ Your task is to CORRECT the existing English — not to retranslate it from scra
 4. Terminology — align with FDA (21 CFR 210/211), EMA (EudraLex Volume 4 GMP), and ICH guidelines (ICH Q7 for APIs, ICH Q1A-Q1F for stability, ICH Q8-Q12 for development and lifecycle). Use the exact standard terms in the glossary below.
 5. Preserve exactly: section numbers (e.g. 1.0, 2.3.1), data values, dates, file paths, reference codes, and proper nouns (people, companies, places, product names).
 6. Minimal intervention — if the existing English is already correct and natural, keep it or improve it only slightly. Do not rewrite good English.
+7. Do NOT change addresses (company addresses, facility addresses, street addresses, URL addresses, email addresses) unless there is an obvious spelling mistake.
 
 ## Mandatory Terminology Glossary (use exactly)
 | Chinese | English (MUST use exactly) |
@@ -114,11 +115,17 @@ Verify three criteria:
 3. Terminology — uses standard FDA / EMA / ICH pharmaceutical terms.
 
 For each [N], output EXACTLY one line in this format:
-[N] PASS | REVIEW | FAIL — brief reason (max 8 words)
+[N] PASS | REVIEW | FAIL — specific issue description
 
-PASS   = accurate, natural, and professional.
+PASS   = accurate, natural, and professional. No issues.
 REVIEW = minor issues (slightly awkward phrasing, non-preferred term) — still usable.
-FAIL   = mistranslation, missing content, or clearly unprofessional English.
+FAIL   = mistranslation, missing content, added content, or clearly unprofessional English.
+
+For REVIEW or FAIL, describe the SPECIFIC problem in up to 30 words:
+- Name the exact word or phrase that is wrong
+- State what it should be, or what content is missing or added
+- Example: "[3] FAIL — 'cleaning verification' should be 'cleaning validation'; missing 'rinse water' clause"
+- Example: "[7] REVIEW — 'equipment check' should be 'equipment verification' per ICH Q7"
 
 Do NOT include any other text, explanations, or notes."""
 
@@ -493,13 +500,27 @@ def correct_content(content_path, output_path=None,
 # ── Verification: compare corrected English against Chinese ────────────
 
 def _flatten_corrections(data):
-    """Flatten corrections.json into ordered (chinese, english, location) items."""
+    """Flatten corrections.json into ordered dicts with full segment info.
+
+    Each item is a dict:
+      chinese, english, original_en, location, kind, index (or ti/ri/ci/pi)
+    """
     items = []
     for p in data.get("paragraphs", []):
         chn = (p.get("text") or "").strip()
         eng = (p.get("translation") or "").strip()
+        orig = (p.get("original_en") or "").strip()
         if chn and eng and not eng.startswith("[CORRECTION ERROR"):
-            items.append((chn, eng, f"Paragraph {p.get('index', '?')}"))
+            items.append({
+                "chinese": chn,
+                "english": eng,
+                "original_en": orig,
+                "location": f"Paragraph {p.get('index', '?')}",
+                "kind": "paragraph",
+                "index": p.get("index"),
+                "replace_index": p.get("replace_index"),
+                "replace_mode": p.get("replace_mode"),
+            })
     for t in data.get("tables", []):
         ti = t.get("index", -1)
         for r in t.get("rows", []):
@@ -507,8 +528,20 @@ def _flatten_corrections(data):
             for c in r.get("cells", []):
                 chn = (c.get("text") or "").strip()
                 eng = (c.get("translation") or "").strip()
+                orig = (c.get("original_en") or "").strip()
                 if chn and eng and not eng.startswith("[CORRECTION ERROR"):
-                    items.append((chn, eng, f"T{ti} R{ri} C{c.get('cell_index', '?')}"))
+                    items.append({
+                        "chinese": chn,
+                        "english": eng,
+                        "original_en": orig,
+                        "location": f"Table {ti} · Row {ri} · Cell {c.get('cell_index', '?')}",
+                        "kind": "cell",
+                        "ti": ti, "ri": ri,
+                        "ci": c.get("cell_index"),
+                        "pi": c.get("para_index"),
+                        "replace_pi": c.get("replace_pi"),
+                        "replace_mode": c.get("replace_mode"),
+                    })
     return items
 
 
@@ -545,7 +578,7 @@ def verify_corrections(corrections_path, output_path=None,
         report = {
             "score": 0, "status": "REVIEW",
             "total_checked": 0, "issues_found": 0,
-            "warnings": 0, "info": 0, "issues": [],
+            "warnings": 0, "info": 0, "issues": [], "segments": [],
             "summary": "No Chinese-English pairs were found to verify.",
             "by_category": {},
         }
@@ -554,7 +587,7 @@ def verify_corrections(corrections_path, output_path=None,
                 json.dump(report, f, ensure_ascii=False, indent=2)
         return report
 
-    pairs = [(c, e) for c, e, _ in items]
+    pairs = [(item["chinese"], item["english"]) for item in items]
     verdicts, notes = {}, {}
     for batch_start in range(0, total, BATCH_SIZE):
         batch_end = min(batch_start + BATCH_SIZE, total)
@@ -564,31 +597,45 @@ def verify_corrections(corrections_path, output_path=None,
                 "Audit each pair. Output exactly one verdict line per pair.",
                 api_base, api_key, model, provider,
             )
-            # res maps local indices -> raw line(s); parse
-            # The real provider path strips [N] prefixes via _parse_batch_response,
-            # but some providers/models may leave them in — strip defensively so a
-            # value like "[0] PASS - ..." never becomes "[0] [0] PASS - ...".
             raw_lines = "\n".join(
                 f"[{k}] {re.sub(r'^\[\d+\]\s*', '', str(v))}"
                 for k, v in sorted(res.items())
             )
-            # The model may already include [N] prefixes; parse them all
             batch_verdicts, batch_notes = _parse_verdicts(raw_lines, batch_end - batch_start)
             for local_i in range(batch_end - batch_start):
                 verdicts[batch_start + local_i] = batch_verdicts[local_i]
                 notes[batch_start + local_i] = batch_notes[local_i]
         except Exception as e:
-            # Per product rule: on LLM failure, abort instead of shipping a
-            # report with raw error text in the notes. The pipeline returns
-            # the friendly "try again later" message to the user instead.
             raise RuntimeError(f"LLM verification failed: {e}") from e
         if batch_end < total:
             time.sleep(MIN_DELAY)
 
+    # Build issues list (FAIL/REVIEW only) and full segments list (ALL)
     issues = []
+    segments = []
     reviews = fails = 0
-    for i, (chn, eng, loc) in enumerate(items):
+    for i, item in enumerate(items):
         v = verdicts.get(i, "REVIEW")
+        note = notes.get(i, "")
+        seg = {
+            "location": item["location"],
+            "chinese": item["chinese"],
+            "corrected_english": item["english"],
+            "original_english": item["original_en"],
+            "verdict": v,
+            "note": note,
+            "kind": item["kind"],
+        }
+        # Include structural info for client-side updates
+        if item["kind"] == "paragraph":
+            seg["index"] = item["index"]
+        else:
+            seg["ti"] = item["ti"]
+            seg["ri"] = item["ri"]
+            seg["ci"] = item["ci"]
+            seg["pi"] = item["pi"]
+        segments.append(seg)
+
         if v == "FAIL":
             fails += 1
             sev = "warning"
@@ -599,11 +646,11 @@ def verify_corrections(corrections_path, output_path=None,
             continue
         issues.append({
             "severity": sev,
-            "location": loc,
+            "location": item["location"],
             "verdict": v,
-            "note": notes.get(i, ""),
-            "chinese": chn[:120],
-            "english": eng[:120],
+            "note": note,
+            "chinese": item["chinese"],
+            "english": item["english"],
         })
 
     score = max(0, min(100, 100 - reviews * 10 - fails * 25))
@@ -630,6 +677,7 @@ def verify_corrections(corrections_path, output_path=None,
         "warnings": fails,
         "info": reviews,
         "issues": issues,
+        "segments": segments,
         "summary": summary,
         "by_category": {},
     }
