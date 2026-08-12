@@ -120,6 +120,37 @@
             line-height: 1.6;
         }
 
+        /* Mode toggle */
+        .mode-toggle {
+            display: flex;
+            width: fit-content;
+            margin: 0 auto 24px;
+            padding: 4px;
+            gap: 4px;
+            background: var(--bg-secondary);
+            border: 0.5px solid var(--border);
+            border-radius: 12px;
+        }
+        .mode-toggle button {
+            border: none;
+            background: transparent;
+            padding: 9px 20px;
+            border-radius: 9px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+        }
+        .mode-toggle button:hover { color: var(--text); }
+        .mode-toggle button.active {
+            background: #ffffff;
+            color: var(--blue-600);
+            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.10);
+        }
+        .mode-toggle button.active[data-mode="correct"] { color: #7c3aed; }
+
         /* Main card */
         .main-card {
             background: var(--bg);
@@ -550,6 +581,8 @@
             .hero h1 { font-size: 20px; }
             .main-card { padding: 18px; }
             .upload-area { padding: 36px 16px; }
+            .mode-toggle { width: 100%; }
+            .mode-toggle button { flex: 1; justify-content: center; display: inline-flex; align-items: center; }
         }
     </style>
 </head>
@@ -579,6 +612,12 @@
         <div class="hero-badge">CMC · GMP · Regulatory</div>
         <h1>Bilingual Document Generator</h1>
         <p>Translate Chinese SOPs and GMP documents to natural professional English — or correct the English in your existing bilingual documents using FDA, EMA, and ICH terminology.</p>
+    </div>
+
+    <!-- Mode toggle -->
+    <div class="mode-toggle" role="tablist" aria-label="Choose document mode">
+        <button type="button" class="active" data-mode="translate" id="mode-translate" role="tab" aria-selected="true">Chinese → English</button>
+        <button type="button" data-mode="correct" id="mode-correct" role="tab" aria-selected="false">English Correction</button>
     </div>
 
     <!-- Upload -->
@@ -696,7 +735,7 @@
     <!-- ═══════════════════════════════════════════════════════════════
          English Correction
          ═══════════════════════════════════════════════════════════════ -->
-    <div class="main-card" id="corr-section">
+    <div class="main-card hidden" id="corr-section">
         <div class="lang-badge">
             <span class="dot" style="background:#7c3aed;"></span>
             English Correction
@@ -819,6 +858,27 @@ document.getElementById('navLogout').addEventListener('click', function(e) {
     fetch('/api/logout', { method: 'POST' })
         .then(function() { window.location.reload(); });
 });
+
+// ── Mode toggle: Chinese→English / English Correction ─────────────────
+(function() {
+    var modeButtons = document.querySelectorAll('.mode-toggle button');
+    var translateSection = document.getElementById('upload-section');
+    var correctSection = document.getElementById('corr-section');
+
+    function setMode(mode) {
+        modeButtons.forEach(function(b) {
+            var on = b.dataset.mode === mode;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        translateSection.classList.toggle('hidden', mode !== 'translate');
+        correctSection.classList.toggle('hidden', mode !== 'correct');
+    }
+
+    modeButtons.forEach(function(b) {
+        b.addEventListener('click', function() { setMode(b.dataset.mode); });
+    });
+})();
 
 const uploadArea = document.getElementById('upload-area');
 const fileInput = document.getElementById('file-input');
