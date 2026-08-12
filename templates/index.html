@@ -145,6 +145,13 @@
             border-radius: 50%;
             background: var(--success);
         }
+        .corr-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 16px;
+        }
+        .corr-desc strong { color: var(--text); font-weight: 600; }
 
         /* Upload area */
         .upload-area {
@@ -571,7 +578,7 @@
     <div class="hero">
         <div class="hero-badge">CMC · GMP · Regulatory</div>
         <h1>Bilingual Document Generator</h1>
-        <p>Chinese SOPs and GMP documents translated to natural professional English - with original text preserved.</p>
+        <p>Translate Chinese SOPs and GMP documents to natural professional English — or correct the English in your existing bilingual documents using FDA, EMA, and ICH terminology.</p>
     </div>
 
     <!-- Upload -->
@@ -612,10 +619,9 @@
             </div>
             <button class="fc-remove" id="remove-file">&times;</button>
         </div>
-    </div>
 
-    <!-- Progress phases -->
-    <div class="progress-section" id="progress-section">
+        <!-- Progress phases -->
+        <div class="progress-section" id="progress-section">
         <div class="phase-list">
             <div class="phase" id="phase-extract">
                 <span class="phase-icon">⏳</span>
@@ -684,6 +690,86 @@
         <button class="btn btn-restart" id="btn-restart">
             Translate another document
         </button>
+    </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         English Correction
+         ═══════════════════════════════════════════════════════════════ -->
+    <div class="main-card" id="corr-section">
+        <div class="lang-badge">
+            <span class="dot" style="background:#7c3aed;"></span>
+            English Correction
+        </div>
+        <p class="corr-desc">
+            Upload a bilingual document (Chinese with English below it) and the app
+            will correct the English as a <strong>CMC, Regulatory &amp; Quality
+            expert</strong> — natural, professional English aligned with
+            <strong>FDA, EMA, and ICH</strong> terminology — then verify the corrected
+            English against the Chinese above it.
+        </p>
+        <div class="upload-area" id="corr-upload-area">
+            <div class="upload-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
+            </div>
+            <div class="upload-title">Drop .docx file here</div>
+            <div class="upload-hint">Correction starts automatically — up to 50 MB</div>
+            <input type="file" accept=".docx" id="corr-file-input">
+        </div>
+        <div class="file-card" id="corr-file-card">
+            <div class="fc-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div class="fc-details">
+                <div class="fc-name" id="corr-file-name"></div>
+                <div class="fc-size" id="corr-file-size"></div>
+            </div>
+            <button class="fc-remove" id="corr-remove-file">&times;</button>
+        </div>
+
+        <!-- Correction progress -->
+        <div class="progress-section" id="corr-progress-section">
+            <div class="phase-list">
+                <div class="phase" id="cphase-extract">
+                    <span class="phase-icon">⏳</span>
+                    <span class="phase-label">Extracting Chinese &amp; English text</span>
+                    <span class="phase-stat" id="cstat-extract"></span>
+                </div>
+                <div class="phase" id="cphase-correct">
+                    <span class="phase-icon">⏳</span>
+                    <span class="phase-label">Correcting English (CMC · Regulatory · Quality)</span>
+                    <span class="phase-stat" id="cstat-correct"></span>
+                </div>
+                <div class="phase" id="cphase-verify">
+                    <span class="phase-icon">⏳</span>
+                    <span class="phase-label">Verifying against Chinese &amp; FDA/EMA/ICH terms</span>
+                    <span class="phase-stat" id="cstat-verify"></span>
+                </div>
+                <div class="phase" id="cphase-insert">
+                    <span class="phase-icon">⏳</span>
+                    <span class="phase-label">Building corrected document</span>
+                    <span class="phase-stat" id="cstat-insert"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Correction error -->
+        <div class="error-box" id="corr-error-box"></div>
+
+        <!-- Correction result -->
+        <div class="result-card" id="corr-result-card">
+            <h3>Correction complete</h3>
+            <div id="corr-verify-badge"></div>
+            <a id="corr-download-btn" class="btn btn-primary" href="#" download>
+                Download corrected .docx
+            </a>
+            <button class="btn btn-restart" id="corr-btn-restart">
+                Correct another document
+            </button>
+        </div>
     </div>
 
     <!-- Footer -->
@@ -1058,6 +1144,168 @@ function resetAll() {
     setConfirmEnabled(true);
     ['extract', 'translate', 'verify', 'insert'].forEach(id => setPhase(id, ''));
     const dl = document.getElementById('download-btn');
+    if (dl.dataset.blobUrl) { URL.revokeObjectURL(dl.dataset.blobUrl); delete dl.dataset.blobUrl; }
+    dl.href = '#';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  English Correction flow (independent from the translation flow)
+// ═══════════════════════════════════════════════════════════════════
+const corrUploadArea = document.getElementById('corr-upload-area');
+const corrFileInput = document.getElementById('corr-file-input');
+const corrFileCard = document.getElementById('corr-file-card');
+const corrFileName = document.getElementById('corr-file-name');
+const corrFileSize = document.getElementById('corr-file-size');
+const corrRemoveBtn = document.getElementById('corr-remove-file');
+const corrProgress = document.getElementById('corr-progress-section');
+const corrErrorBox = document.getElementById('corr-error-box');
+const corrResultCard = document.getElementById('corr-result-card');
+
+let corrFile = null;
+
+corrUploadArea.addEventListener('click', () => corrFileInput.click());
+corrUploadArea.addEventListener('dragover', e => { e.preventDefault(); corrUploadArea.classList.add('dragover'); });
+corrUploadArea.addEventListener('dragleave', () => corrUploadArea.classList.remove('dragover'));
+corrUploadArea.addEventListener('drop', e => {
+    e.preventDefault();
+    corrUploadArea.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+        corrFileInput.files = e.dataTransfer.files;
+        handleCorrFileSelect(e.dataTransfer.files[0]);
+    }
+});
+
+corrFileInput.addEventListener('change', () => {
+    if (corrFileInput.files.length) handleCorrFileSelect(corrFileInput.files[0]);
+});
+
+corrRemoveBtn.addEventListener('click', resetCorrection);
+
+function handleCorrFileSelect(file) {
+    corrFile = file;
+    corrFileName.textContent = file.name;
+    corrFileSize.textContent = formatSize(file.size);
+    corrUploadArea.classList.add('hidden');
+    corrFileCard.classList.add('visible');
+    startCorrection();
+}
+
+function setCPhase(id, state, statText) {
+    const el = document.getElementById('cphase-' + id);
+    const icon = el.querySelector('.phase-icon');
+    const stat = document.getElementById('cstat-' + id);
+    el.classList.remove('active', 'done');
+    if (state === 'active') {
+        el.classList.add('active');
+        icon.textContent = '\u{1F504}';
+    } else if (state === 'done') {
+        el.classList.add('done');
+        icon.textContent = '\u{2705}';
+    }
+    if (statText) stat.textContent = statText;
+}
+
+async function startCorrection() {
+    if (!corrFile) return;
+
+    corrErrorBox.classList.remove('visible');
+    corrResultCard.classList.remove('visible');
+    corrProgress.classList.add('visible');
+    ['extract', 'correct', 'verify', 'insert'].forEach(id => setCPhase(id, ''));
+
+    try {
+        setCPhase('extract', 'active', 'Extracting...');
+
+        let statsP = null;
+        try {
+            const extractFd = new FormData();
+            extractFd.append('file', corrFile);
+            const extractResp = await fetch('/api/extract', { method: 'POST', body: extractFd });
+            if (extractResp.ok) {
+                const ed = await extractResp.json();
+                statsP = ed.stats;
+                setCPhase('extract', 'done', `${ed.stats.paragraphs} par. \u00b7 ${ed.stats.tables} tables \u00b7 ${ed.stats.table_cells} cells`);
+            }
+        } catch(e) {}
+        if (!statsP) setCPhase('extract', 'done', 'Done');
+
+        setCPhase('correct', 'active', 'Correcting as CMC / Regulatory / Quality expert...');
+
+        const fd = new FormData();
+        fd.append('file', corrFile);
+
+        const resp = await fetch('/api/correct', { method: 'POST', body: fd });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `Server error (${resp.status})`);
+        }
+
+        const score = resp.headers.get('X-Verification-Score');
+        const status = resp.headers.get('X-Verification-Status');
+        const statsH = resp.headers.get('X-Stats');
+        let corrected = '?';
+        let cmcScore = null;
+        if (statsH) {
+            try {
+                const s = JSON.parse(statsH);
+                corrected = s.corrected;
+                cmcScore = s.cmc_score;
+            } catch(e) {}
+        }
+
+        setCPhase('correct', 'done', `${corrected} segment(s) corrected`);
+        setCPhase('verify', 'done', score != null ? `Score: ${score}/100` : 'Done');
+        setCPhase('insert', 'done', 'Done');
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const dl = document.getElementById('corr-download-btn');
+        if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
+        dl.href = url;
+        dl.dataset.blobUrl = url;
+        dl.download = corrFile.name.replace(/\.docx$/i, '_Corrected.docx');
+
+        // Verification badge (accuracy vs Chinese + CMC/GMP glossary)
+        const badgeEl = document.getElementById('corr-verify-badge');
+        let badgeHtml = '';
+        if (score != null && status) {
+            const s = parseInt(score);
+            const cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
+            const label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
+            let extra = '';
+            if (cmcScore != null) extra = ` \u00b7 CMC/GMP ${cmcScore}/100`;
+            badgeHtml = `<span class="verify-badge ${cls}">Accuracy vs Chinese: ${s}/100 \u2014 ${label}${extra}</span>`;
+        }
+        badgeEl.innerHTML = badgeHtml;
+
+        corrProgress.classList.remove('visible');
+        corrResultCard.classList.add('visible');
+
+        dl.click();
+
+        // Refresh free-translation count after delivery
+        refreshFreeBadge();
+
+    } catch(e) {
+        corrProgress.classList.remove('visible');
+        corrErrorBox.textContent = e.message;
+        corrErrorBox.classList.add('visible');
+    }
+}
+
+document.getElementById('corr-btn-restart').addEventListener('click', resetCorrection);
+
+function resetCorrection() {
+    corrFile = null;
+    corrFileInput.value = '';
+    corrUploadArea.classList.remove('hidden');
+    corrFileCard.classList.remove('visible');
+    corrProgress.classList.remove('visible');
+    corrErrorBox.classList.remove('visible');
+    corrResultCard.classList.remove('visible');
+    ['extract', 'correct', 'verify', 'insert'].forEach(id => setCPhase(id, ''));
+    const dl = document.getElementById('corr-download-btn');
     if (dl.dataset.blobUrl) { URL.revokeObjectURL(dl.dataset.blobUrl); delete dl.dataset.blobUrl; }
     dl.href = '#';
 }
