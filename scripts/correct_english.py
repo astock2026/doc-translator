@@ -419,8 +419,11 @@ def correct_content(content_path, output_path=None,
             for batch_idx in range(len(pairs)):
                 corrected[batch_start + batch_idx] = batch_results.get(batch_idx, "")
         except Exception as e:
-            for batch_idx in range(len(pairs)):
-                corrected[batch_start + batch_idx] = f"[CORRECTION ERROR: {e}]"
+            # Per product rule: on LLM failure, do NOT produce a partial
+            # deliverable with [CORRECTION ERROR: ...] placeholders.
+            # Abort so the pipeline returns the friendly "try again later"
+            # message to the user instead.
+            raise RuntimeError(f"LLM correction failed: {e}") from e
         progress = min(batch_end, total)
         sys.stdout.write(f"\r  Correcting batch {batch_start // BATCH_SIZE + 1}/{((total - 1) // BATCH_SIZE) + 1}  ({progress}/{total})")
         sys.stdout.flush()
@@ -569,9 +572,10 @@ def verify_corrections(corrections_path, output_path=None,
                 verdicts[batch_start + local_i] = batch_verdicts[local_i]
                 notes[batch_start + local_i] = batch_notes[local_i]
         except Exception as e:
-            for local_i in range(batch_end - batch_start):
-                verdicts[batch_start + local_i] = "REVIEW"
-                notes[batch_start + local_i] = f"Verification error: {e}"
+            # Per product rule: on LLM failure, abort instead of shipping a
+            # report with raw error text in the notes. The pipeline returns
+            # the friendly "try again later" message to the user instead.
+            raise RuntimeError(f"LLM verification failed: {e}") from e
         if batch_end < total:
             time.sleep(MIN_DELAY)
 

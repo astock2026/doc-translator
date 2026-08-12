@@ -585,8 +585,8 @@ def insert():
     except Exception as e:
         logger.exception("Insert failed")
         return jsonify({
-            "error": "This model is currently experiencing high demand. "
-                     "This spike in demand is usually temporary. "
+            "error": "The model is experiencing high demand. "
+                     "Spikes in demand are usually temporary. "
                      "Please try again later."
         }), 503
     finally:
@@ -752,8 +752,8 @@ def translate():
     except Exception as e:
         logger.exception("Translate pipeline failed")
         return jsonify({
-            "error": "This model is currently experiencing high demand. "
-                     "This spike in demand is usually temporary. "
+            "error": "The model is experiencing high demand. "
+                     "Spikes in demand are usually temporary. "
                      "Please try again later."
         }), 503
     finally:
@@ -895,8 +895,8 @@ def correct():
     except Exception as e:
         logger.exception("Correction pipeline failed")
         return jsonify({
-            "error": "This model is currently experiencing high demand. "
-                     "This spike in demand is usually temporary. "
+            "error": "The model is experiencing high demand. "
+                     "Spikes in demand are usually temporary. "
                      "Please try again later."
         }), 503
     finally:
