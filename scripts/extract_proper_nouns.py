@@ -10,6 +10,10 @@ This powers the manual review step: the app shows the user a table of
 every proper noun with the AI's English translation, lets them edit any
 of them, and applies the edits before inserting into the document.
 
+To keep the Translate phase fast, a rule-based pre-filter skips segments
+that cannot plausibly contain a proper noun (plain standard Chinese
+technical text); only candidate segments are sent to the LLM.
+
 Usage:
     python extract_proper_nouns.py <translations.json> [--output proper_nouns.json]
 """
@@ -27,10 +31,50 @@ except ImportError:
 
 # ── Config ─────────────────────────────────────────────────────────────
 
-BATCH_SIZE = 15          # segments per API call
+BATCH_SIZE = 40          # segments per API call
 MIN_DELAY = 1.0          # seconds between batches
 MAX_RETRIES = 2          # retries on transient errors
 MAX_BATCH_CHARS = 12000  # rough char limit per batch to avoid token overflow
+
+# Fallback scan when the rule-based pre-filter flags nothing: scan the first
+# few segments anyway (headers/cover often hold document or system names
+# that evade simple rules).
+FALLBACK_SCAN_FIRST = 5
+
+
+# ── Rule-based pre-filter ──────────────────────────────────────────────
+# The LLM scan is a second full pass over the document, which roughly
+# doubles the "Translate" phase time. Most segments of a GMP SOP are plain
+# standard Chinese technical text with no proper nouns, so we cheaply skip
+# them and only send candidate segments to the LLM. Signals are kept
+# generous (over-triggering is safe — it just costs a little time);
+# under-triggering is the only real risk, hence the fallback above.
+
+_LATIN_OR_DIGIT = re.compile(r"[A-Za-z0-9]")
+
+# Entity / institution name markers (company, org, university, regulator...)
+_ENTITY_RE = re.compile(
+    r"公司|集团|股份|有限|制药|药业|生物|研究院|研究所|大学|学院|医院|"
+    r"委员会|协会|学会|疾控|药监|管理局|监管局|检测中心|认证中心|总局"
+)
+
+# Person-name position markers (approval / signature blocks)
+_PERSON_RE = re.compile(
+    r"起草人|审核人|批准人|编制人|复核人|审定人|会签人|"
+    r"签名|负责人|联系人|姓名|经办人"
+)
+
+
+def _should_scan(cn):
+    """Cheap rule-based test: does this Chinese segment plausibly contain a
+    proper noun? True = send to the LLM scan; False = skip."""
+    if not cn:
+        return False
+    if _LATIN_OR_DIGIT.search(cn):
+        return True
+    if _ENTITY_RE.search(cn) or _PERSON_RE.search(cn):
+        return True
+    return False
 
 
 NOUN_SYSTEM_PROMPT = """You are an expert bilingual (Chinese-English) editor who reviews
@@ -169,7 +213,17 @@ def extract_proper_nouns(trans_path, output_path=None):
         trans_data = json.load(f)
 
     segments = _segment_texts(trans_data)
-    print(f"Segments to scan for proper nouns: {len(segments)}")
+    total_segments = len(segments)
+
+    # Rule-based pre-filter: only send segments that plausibly contain
+    # proper nouns to the LLM (the LLM pass is the slow part).
+    segments = [s for s in segments if _should_scan(s[0])]
+    if not segments and total_segments:
+        # Safety net: nothing matched the rules — scan the first few
+        # segments anyway (headers / cover often hold document names).
+        segments = _segment_texts(trans_data)[:FALLBACK_SCAN_FIRST]
+        print(f"  No rule matches — falling back to first {FALLBACK_SCAN_FIRST} segments")
+    print(f"Segments to scan for proper nouns: {len(segments)}/{total_segments} (rule-filtered)")
 
     provider = os.environ.get("LLM_PROVIDER", "openai").lower()
     api_base = os.environ.get("LLM_API_URL") or os.environ.get("LLM_API_BASE", "https://api.deepseek.com/v1")
