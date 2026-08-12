@@ -123,6 +123,16 @@ def has_english(text):
     return any(c.isalpha() and ord(c) < 128 for c in text)
 
 
+def _normalize_for_compare(text):
+    """Normalize text for comparison: collapse all whitespace to single
+    spaces and strip.  Used to detect segments where the corrected English
+    is identical to the original — those should be skipped (no track
+    changes, no replacement)."""
+    if not text:
+        return ""
+    return " ".join(text.split())
+
+
 # ── Low-level XML helpers ──────────────────────────────────────────────
 
 def _run_text(run_elem):
@@ -508,6 +518,12 @@ def insert_corrections_safe(input_path, corrections_path, output_path=None,
         if eng.startswith("[CORRECTION ERROR"):
             para_skipped += 1
             continue
+        # Skip if corrected text is identical to original — no changes needed,
+        # and no track-change markup should be created for identical text.
+        orig_en = (item.get("original_en") or "").strip()
+        if orig_en and _normalize_for_compare(eng) == _normalize_for_compare(orig_en):
+            para_skipped += 1
+            continue
         p_elem = paragraph_elements[idx]
         if mode == "same":
             ok = replace_english_in_paragraph(
@@ -539,6 +555,12 @@ def insert_corrections_safe(input_path, corrections_path, output_path=None,
             for cell_item in row_item.get("cells", []):
                 eng = (cell_item.get("translation") or "").strip()
                 if not eng or eng.startswith("[CORRECTION ERROR"):
+                    cell_skipped += 1
+                    continue
+                # Skip if corrected text is identical to original — no changes
+                # needed, and no track-change markup for identical text.
+                orig_en = (cell_item.get("original_en") or "").strip()
+                if orig_en and _normalize_for_compare(eng) == _normalize_for_compare(orig_en):
                     cell_skipped += 1
                     continue
                 ci = cell_item.get("cell_index", -1)
