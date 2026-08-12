@@ -337,6 +337,10 @@
             width: 100%;
         }
         .btn-primary:hover { background: var(--blue-700); }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
 
         .btn-restart {
             background: var(--bg);
@@ -362,6 +366,112 @@
             white-space: pre-wrap;
         }
         .error-box.visible { display: block; }
+
+        /* Proper-noun review */
+        .review-card {
+            display: none;
+            margin-top: 20px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+        }
+        .review-card.visible { display: block; }
+        .review-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .review-card .review-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.6;
+        }
+        .review-table-wrap {
+            max-height: 320px;
+            overflow-y: auto;
+            border: 0.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 16px;
+        }
+        .review-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .review-table th {
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            text-align: left;
+            font-weight: 600;
+            color: var(--text-secondary);
+            padding: 10px 12px;
+            border-bottom: 0.5px solid var(--border);
+            z-index: 1;
+        }
+        .review-table td {
+            padding: 8px 12px;
+            border-bottom: 0.5px solid var(--border-light);
+            vertical-align: middle;
+        }
+        .review-table tr:last-child td { border-bottom: none; }
+        .review-table .noun-num {
+            width: 36px;
+            color: var(--text-tertiary);
+            font-size: 12px;
+        }
+        .review-table .noun-cn {
+            width: 38%;
+            font-weight: 500;
+        }
+        .noun-input {
+            width: 100%;
+            padding: 7px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            color: var(--text);
+            background: var(--bg);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .noun-input:focus {
+            border-color: var(--blue-600);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .noun-empty {
+            display: none;
+            padding: 14px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            color: var(--text-secondary);
+            font-size: 13px;
+            margin-bottom: 16px;
+        }
+        .noun-empty.visible { display: block; }
+        .review-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .review-actions .btn { width: auto; }
+        .btn-secondary {
+            background: var(--bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--bg-secondary); }
+        .review-note {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 10px;
+        }
 
         /* Footer */
         .footer {
@@ -500,13 +610,44 @@
         </div>
     </div>
 
+    <!-- Proper-noun review -->
+    <div class="review-card" id="review-card">
+        <div id="verify-badge-container"></div>
+        <h3>📝 Review proper nouns</h3>
+        <p class="review-desc">
+            Names of people, companies, and places often can't be translated by rules alone.
+            Check the AI's English renderings below and correct any that are wrong —
+            your edits will be applied to the final document.
+        </p>
+        <div class="review-table-wrap">
+            <table class="review-table">
+                <thead>
+                    <tr>
+                        <th class="noun-num">#</th>
+                        <th>Chinese</th>
+                        <th>English translation (editable)</th>
+                    </tr>
+                </thead>
+                <tbody id="noun-tbody"></tbody>
+            </table>
+        </div>
+        <div class="noun-empty" id="noun-empty">
+            No proper nouns detected — you can continue directly.
+        </div>
+        <div class="review-actions">
+            <button class="btn btn-primary" id="btn-confirm-nouns">Confirm &amp; Generate Document</button>
+            <button class="btn btn-secondary" id="btn-cancel-nouns">Start over</button>
+        </div>
+        <p class="review-note" id="review-note"></p>
+    </div>
+
     <!-- Error -->
     <div class="error-box" id="error-box"></div>
 
     <!-- Result -->
     <div class="result-card" id="result-card">
         <h3>Translation complete</h3>
-        <div id="verify-badge-container"></div>
+        <div id="verify-badge-result"></div>
         <a id="download-btn" class="btn btn-primary" href="#" download>
             Download bilingual .docx
         </a>
@@ -573,8 +714,13 @@ const progressSection = document.getElementById('progress-section');
 const errorBox = document.getElementById('error-box');
 const resultCard = document.getElementById('result-card');
 const uploadSection = document.getElementById('upload-section');
+const reviewCard = document.getElementById('review-card');
 
 let currentFile = null;
+let pendingTranslations = null;
+let pendingNouns = [];
+let pendingBaseName = '';
+let pendingBadgeHtml = '';
 
 uploadArea.addEventListener('click', () => fileInput.click());
 uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
@@ -629,7 +775,11 @@ async function startTranslation() {
 
     errorBox.classList.remove('visible');
     resultCard.classList.remove('visible');
+    reviewCard.classList.remove('visible');
     progressSection.classList.add('visible');
+    pendingTranslations = null;
+    pendingNouns = [];
+    setConfirmEnabled(true);
 
     ['extract', 'translate', 'verify', 'insert'].forEach(id => setPhase(id, ''));
 
@@ -665,57 +815,30 @@ async function startTranslation() {
 
         const resp = await fetch('/api/translate', { method: 'POST', body: transFd });
 
-        const score = resp.headers.get('X-Verification-Score');
-        const status = resp.headers.get('X-Verification-Status');
-        const statsH = resp.headers.get('X-Stats');
-
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.error || `Server error (${resp.status})`);
         }
 
-        if (statsH) {
-            try {
-                const s = JSON.parse(statsH);
-                setPhase('translate', 'done', `${s.translated || '?'} segments`);
-                setPhase('verify', 'done', `Score: ${score || '?'}/100`);
-                setPhase('insert', 'done', `${s.inserted_paras || 0} par. \u00b7 ${s.inserted_cells || 0} cells`);
-            } catch(e) {
-                setPhase('translate', 'done', 'Done');
-                setPhase('verify', 'done', score ? `Score: ${score}/100` : 'Done');
-                setPhase('insert', 'done', 'Done');
-            }
-        } else {
-            setPhase('translate', 'done', 'Done');
-            setPhase('verify', 'done', score ? `Score: ${score}/100` : 'Done');
-            setPhase('insert', 'done', 'Done');
+        const data = await resp.json();
+        if (!data.translations) {
+            throw new Error('Unexpected server response — please try again.');
         }
 
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const dl = document.getElementById('download-btn');
-        if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
-        dl.href = url;
-        dl.dataset.blobUrl = url;
-        dl.download = currentFile.name.replace(/\.docx$/i, '_Bilingual.docx');
+        const score = data.report && data.report.score;
+        const status = data.report && data.report.status;
+        const stats = data.stats || {};
 
-        const verifyBadge = document.getElementById('verify-badge-container');
-        if (score && status) {
-            const s = parseInt(score);
-            const cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
-            const label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
-            verifyBadge.innerHTML = `<span class="verify-badge ${cls}">CMC/GMP Score: ${s}/100 \u2014 ${label}</span>`;
-        } else {
-            verifyBadge.innerHTML = '';
-        }
+        setPhase('translate', 'done', `${stats.translated || '?'} segments`);
+        setPhase('verify', 'done', score != null ? `Score: ${score}/100` : 'Done');
+        setPhase('insert', '');
+
+        pendingTranslations = data.translations;
+        pendingNouns = data.proper_nouns || [];
+        pendingBaseName = data.base_name || currentFile.name.replace(/\.docx$/i, '');
 
         progressSection.classList.remove('visible');
-        resultCard.classList.add('visible');
-
-        dl.click();
-
-        // Refresh free-translation count after a successful translation
-        refreshFreeBadge();
+        showNounReview(score, status);
 
     } catch(e) {
         progressSection.classList.remove('visible');
@@ -724,16 +847,185 @@ async function startTranslation() {
     }
 }
 
+function showNounReview(score, status) {
+    const tbody = document.getElementById('noun-tbody');
+    const empty = document.getElementById('noun-empty');
+    const note = document.getElementById('review-note');
+
+    tbody.innerHTML = '';
+    if (pendingNouns.length === 0) {
+        empty.classList.add('visible');
+        note.textContent = '';
+    } else {
+        empty.classList.remove('visible');
+        pendingNouns.forEach(function(n, i) {
+            const tr = document.createElement('tr');
+            const tdNum = document.createElement('td');
+            tdNum.className = 'noun-num';
+            tdNum.textContent = i + 1;
+            const tdCn = document.createElement('td');
+            tdCn.className = 'noun-cn';
+            tdCn.textContent = n.chinese || '';
+            const tdEn = document.createElement('td');
+            const input = document.createElement('input');
+            input.className = 'noun-input';
+            input.type = 'text';
+            input.dataset.idx = i;
+            input.value = n.english || '';
+            tdEn.appendChild(input);
+            tr.appendChild(tdNum);
+            tr.appendChild(tdCn);
+            tr.appendChild(tdEn);
+            tbody.appendChild(tr);
+        });
+        note.textContent = `Edits apply everywhere the name appears in the English text (${pendingNouns.length} name(s) found).`;
+    }
+
+    // Verification badge shown above the review table
+    const verifyBadge = document.getElementById('verify-badge-container');
+    let badgeHtml = '';
+    if (score != null && status) {
+        const s = parseInt(score);
+        const cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
+        const label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
+        badgeHtml = `<span class="verify-badge ${cls}">CMC/GMP Score: ${s}/100 \u2014 ${label}</span>`;
+    }
+    verifyBadge.innerHTML = badgeHtml;
+    pendingBadgeHtml = badgeHtml;
+
+    reviewCard.classList.add('visible');
+}
+
+function applyNounEdits() {
+    // Collect edits from the input fields
+    const edits = {};
+    document.querySelectorAll('.noun-input').forEach(function(inp) {
+        const idx = parseInt(inp.dataset.idx, 10);
+        edits[idx] = inp.value.trim();
+    });
+
+    // Build old -> new replacements (only for changed nouns)
+    const replacements = [];
+    pendingNouns.forEach(function(n, idx) {
+        const newEn = edits[idx];
+        if (newEn && newEn !== (n.english || '')) {
+            replacements.push({ old: n.english || '', neu: newEn });
+        }
+    });
+    // Longest first so overlapping names are replaced correctly
+    replacements.sort(function(a, b) { return b.old.length - a.old.length; });
+
+    const data = JSON.parse(JSON.stringify(pendingTranslations));
+    const apply = function(text) {
+        if (!text) return text;
+        let out = text;
+        replacements.forEach(function(r) {
+            if (r.old && r.neu) out = out.split(r.old).join(r.neu);
+        });
+        return out;
+    };
+    (data.paragraphs || []).forEach(function(p) {
+        if (p.translation) p.translation = apply(p.translation);
+    });
+    (data.tables || []).forEach(function(t) {
+        (t.rows || []).forEach(function(r) {
+            (r.cells || []).forEach(function(c) {
+                if (c.translation) c.translation = apply(c.translation);
+            });
+        });
+    });
+    return data;
+}
+
+function setConfirmEnabled(enabled) {
+    document.getElementById('btn-confirm-nouns').disabled = !enabled;
+}
+
+async function runInsert(translationsData) {
+    errorBox.classList.remove('visible');
+    resultCard.classList.remove('visible');
+    reviewCard.classList.remove('visible');
+    progressSection.classList.add('visible');
+    setConfirmEnabled(false);
+
+    try {
+        setPhase('insert', 'active', 'Inserting your edits into document...');
+
+        const fd = new FormData();
+        fd.append('file', currentFile);
+        fd.append('translations',
+            new Blob([JSON.stringify(translationsData)], { type: 'application/json' }),
+            'translations.json');
+
+        const resp = await fetch('/api/insert', { method: 'POST', body: fd });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `Server error (${resp.status})`);
+        }
+
+        // Count inserted segments from the translations data
+        const paraDone = (translationsData.paragraphs || []).filter(function(p) { return (p.translation || '').trim(); }).length;
+        let cellDone = 0;
+        (translationsData.tables || []).forEach(function(t) {
+            (t.rows || []).forEach(function(r) {
+                (r.cells || []).forEach(function(c) {
+                    if ((c.translation || '').trim()) cellDone++;
+                });
+            });
+        });
+        setPhase('insert', 'done', `${paraDone} par. \u00b7 ${cellDone} cells`);
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const dl = document.getElementById('download-btn');
+        if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
+        dl.href = url;
+        dl.dataset.blobUrl = url;
+        dl.download = (pendingBaseName || currentFile.name.replace(/\.docx$/i, '')) + '_Bilingual.docx';
+
+        progressSection.classList.remove('visible');
+        resultCard.classList.add('visible');
+
+        // Show the verification badge again on the result card
+        document.getElementById('verify-badge-result').innerHTML = pendingBadgeHtml || '';
+
+        dl.click();
+
+        // Refresh free-translation count after the translation is delivered
+        refreshFreeBadge();
+
+    } catch(e) {
+        progressSection.classList.remove('visible');
+        errorBox.textContent = e.message;
+        errorBox.classList.add('visible');
+        setConfirmEnabled(true);
+        reviewCard.classList.add('visible');
+    }
+}
+
+document.getElementById('btn-confirm-nouns').addEventListener('click', function() {
+    const edited = applyNounEdits();
+    runInsert(edited);
+});
+
+document.getElementById('btn-cancel-nouns').addEventListener('click', resetAll);
+
 document.getElementById('btn-restart').addEventListener('click', resetAll);
 
 function resetAll() {
     currentFile = null;
+    pendingTranslations = null;
+    pendingNouns = [];
+    pendingBadgeHtml = '';
     fileInput.value = '';
     uploadArea.classList.remove('hidden');
     fileCard.classList.remove('visible');
     progressSection.classList.remove('visible');
     errorBox.classList.remove('visible');
     resultCard.classList.remove('visible');
+    reviewCard.classList.remove('visible');
+    setConfirmEnabled(true);
     ['extract', 'translate', 'verify', 'insert'].forEach(id => setPhase(id, ''));
     const dl = document.getElementById('download-btn');
     if (dl.dataset.blobUrl) { URL.revokeObjectURL(dl.dataset.blobUrl); delete dl.dataset.blobUrl; }
