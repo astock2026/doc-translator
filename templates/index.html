@@ -511,6 +511,83 @@
             margin-top: 10px;
         }
 
+        /* Correction review segments */
+        .corr-segments {
+            max-height: 520px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+        }
+        .corr-segment {
+            padding: 14px 16px;
+            border: 0.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 10px;
+            background: var(--bg);
+        }
+        .corr-segment:last-child { margin-bottom: 0; }
+        .corr-segment.seg-pass { opacity: 0.65; }
+        .seg-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .seg-location {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .seg-verdict {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 10px;
+            border-radius: 12px;
+        }
+        .seg-verdict.verify-pass { background: var(--success-bg); color: var(--success); }
+        .seg-verdict.verify-review { background: var(--warning-bg); color: var(--warning); }
+        .seg-verdict.verify-fail { background: var(--danger-bg); color: var(--danger); }
+        .seg-chinese {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            line-height: 1.5;
+        }
+        .seg-original {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-bottom: 6px;
+            line-height: 1.5;
+        }
+        .seg-label {
+            font-weight: 600;
+        }
+        .seg-note {
+            font-size: 12px;
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        .seg-note-note-fail { color: var(--danger); }
+        .seg-note-note-review { color: var(--warning); }
+        .seg-edit {
+            width: 100%;
+            min-height: 60px;
+            padding: 8px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--text);
+            background: var(--bg);
+            outline: none;
+            resize: vertical;
+            transition: border-color 0.2s;
+            line-height: 1.5;
+        }
+        .seg-edit:focus {
+            border-color: var(--blue-600);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
         /* Footer */
         .footer {
             border-top: 0.5px solid var(--border);
@@ -787,6 +864,23 @@
                     <span class="phase-stat" id="cstat-insert"></span>
                 </div>
             </div>
+        </div>
+
+        <!-- Correction review -->
+        <div class="review-card" id="corr-review-card">
+            <div id="corr-review-badge"></div>
+            <h3>📝 Review and edit corrections</h3>
+            <p class="review-desc">
+                The model flagged the segments below as inaccurate or needing review.
+                Edit the English text directly — your changes will be applied to the
+                final document. Segments marked PASS need no action.
+            </p>
+            <div class="corr-segments" id="corr-segments"></div>
+            <div class="review-actions">
+                <button class="btn btn-primary" id="btn-corr-apply">Build Document</button>
+                <button class="btn btn-secondary" id="btn-corr-skip">Use as-is</button>
+            </div>
+            <p class="review-note" id="corr-review-note"></p>
         </div>
 
         <!-- Correction error -->
@@ -1222,6 +1316,11 @@ const corrErrorBox = document.getElementById('corr-error-box');
 const corrResultCard = document.getElementById('corr-result-card');
 
 let corrFile = null;
+let corrCorrections = null;
+let corrSegments = [];
+let corrBaseName = '';
+let corrCmcScore = null;
+let corrBadgeHtml = '';
 
 corrUploadArea.addEventListener('click', () => corrFileInput.click());
 corrUploadArea.addEventListener('dragover', e => { e.preventDefault(); corrUploadArea.classList.add('dragover'); });
@@ -1270,6 +1369,7 @@ async function startCorrection() {
 
     corrErrorBox.classList.remove('visible');
     corrResultCard.classList.remove('visible');
+    document.getElementById('corr-review-card').classList.remove('visible');
     corrProgress.classList.add('visible');
     ['extract', 'correct', 'verify', 'insert'].forEach(id => setCPhase(id, ''));
 
@@ -1301,51 +1401,26 @@ async function startCorrection() {
             throw new Error(err.error || `Server error (${resp.status})`);
         }
 
-        const score = resp.headers.get('X-Verification-Score');
-        const status = resp.headers.get('X-Verification-Status');
-        const statsH = resp.headers.get('X-Stats');
-        let corrected = '?';
-        let cmcScore = null;
-        if (statsH) {
-            try {
-                const s = JSON.parse(statsH);
-                corrected = s.corrected;
-                cmcScore = s.cmc_score;
-            } catch(e) {}
+        const data = await resp.json();
+        if (!data.success || !data.corrections) {
+            throw new Error('Unexpected server response — please try again.');
         }
+
+        const score = data.score;
+        const status = data.status;
+        const corrected = (data.stats && data.stats.corrected) || '?';
+        corrCmcScore = data.cmc_score;
 
         setCPhase('correct', 'done', `${corrected} segment(s) corrected`);
         setCPhase('verify', 'done', score != null ? `Score: ${score}/100` : 'Done');
-        setCPhase('insert', 'done', 'Done');
 
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const dl = document.getElementById('corr-download-btn');
-        if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
-        dl.href = url;
-        dl.dataset.blobUrl = url;
-        dl.download = corrFile.name.replace(/\.docx$/i, '_Corrected.docx');
-
-        // Verification badge (accuracy vs Chinese + CMC/GMP glossary)
-        const badgeEl = document.getElementById('corr-verify-badge');
-        let badgeHtml = '';
-        if (score != null && status) {
-            const s = parseInt(score);
-            const cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
-            const label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
-            let extra = '';
-            if (cmcScore != null) extra = ` \u00b7 CMC/GMP ${cmcScore}/100`;
-            badgeHtml = `<span class="verify-badge ${cls}">Accuracy vs Chinese: ${s}/100 \u2014 ${label}${extra}</span>`;
-        }
-        badgeEl.innerHTML = badgeHtml;
+        // Store for the review + apply phase
+        corrCorrections = data.corrections;
+        corrSegments = data.segments || [];
+        corrBaseName = data.base_name || corrFile.name.replace(/\.docx$/i, '');
 
         corrProgress.classList.remove('visible');
-        corrResultCard.classList.add('visible');
-
-        dl.click();
-
-        // Refresh free-translation count after delivery
-        refreshFreeBadge();
+        showCorrectionReview(score, status, data);
 
     } catch(e) {
         corrProgress.classList.remove('visible');
@@ -1354,18 +1429,204 @@ async function startCorrection() {
     }
 }
 
+function showCorrectionReview(score, status, data) {
+    var badgeEl = document.getElementById('corr-review-badge');
+    var segContainer = document.getElementById('corr-segments');
+    var note = document.getElementById('corr-review-note');
+
+    // Score badge
+    var badgeHtml = '';
+    if (score != null && status) {
+        var s = parseInt(score);
+        var cls = s >= 80 ? 'verify-pass' : (s >= 60 ? 'verify-review' : 'verify-fail');
+        var label = status === 'PASS' ? 'PASS' : (status === 'REVIEW' ? 'REVIEW' : 'FAIL');
+        var extra = '';
+        if (corrCmcScore != null) extra = ' \u00b7 CMC/GMP ' + corrCmcScore + '/100';
+        badgeHtml = '<span class="verify-badge ' + cls + '">Accuracy vs Chinese: ' + s + '/100 \u2014 ' + label + extra + '</span>';
+    }
+    badgeEl.innerHTML = badgeHtml;
+    corrBadgeHtml = badgeHtml;
+
+    // Sort segments: FAIL first, then REVIEW, then PASS
+    var order = { 'FAIL': 0, 'REVIEW': 1, 'PASS': 2 };
+    var sorted = corrSegments.map(function(seg, i) {
+        return { seg: seg, origIdx: i };
+    }).sort(function(a, b) {
+        return (order[a.seg.verdict] || 3) - (order[b.seg.verdict] || 3);
+    });
+
+    // Build segment cards
+    segContainer.innerHTML = '';
+    sorted.forEach(function(item) {
+        var seg = item.seg;
+        var origIdx = item.origIdx;
+        var div = document.createElement('div');
+        div.className = 'corr-segment' + (seg.verdict === 'PASS' ? ' seg-pass' : '');
+        div.dataset.segIdx = origIdx;
+
+        var vCls = seg.verdict === 'PASS' ? 'verify-pass' : (seg.verdict === 'REVIEW' ? 'verify-review' : 'verify-fail');
+        var nCls = seg.verdict === 'FAIL' ? 'seg-note-note-fail' : 'seg-note-note-review';
+
+        var html = '<div class="seg-header">';
+        html += '<span class="seg-location">' + escapeHtml(seg.location) + '</span>';
+        html += '<span class="seg-verdict ' + vCls + '">' + escapeHtml(seg.verdict) + '</span>';
+        html += '</div>';
+        html += '<div class="seg-chinese">' + escapeHtml(seg.chinese) + '</div>';
+        if (seg.original_english) {
+            html += '<div class="seg-original"><span class="seg-label">Original:</span> ' + escapeHtml(seg.original_english) + '</div>';
+        }
+        if (seg.note && seg.verdict !== 'PASS') {
+            html += '<div class="seg-note ' + nCls + '"><span class="seg-label">Issue:</span> ' + escapeHtml(seg.note) + '</div>';
+        }
+        html += '<textarea class="seg-edit" data-seg-idx="' + origIdx + '">' + escapeHtml(seg.corrected_english) + '</textarea>';
+        div.innerHTML = html;
+        segContainer.appendChild(div);
+    });
+
+    var failCount = data.fail_count || 0;
+    var reviewCount = data.review_count || 0;
+    var totalCount = data.total_segments || 0;
+    var passCount = totalCount - failCount - reviewCount;
+    note.textContent = failCount + ' FAIL \u00b7 ' + reviewCount + ' REVIEW \u00b7 ' + passCount + ' PASS  (' + totalCount + ' total). Edit any segment above, then click "Build Document".';
+
+    document.getElementById('corr-review-card').classList.add('visible');
+    document.getElementById('btn-corr-apply').disabled = false;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function applyCorrectionEdits() {
+    if (!corrCorrections) return corrCorrections;
+
+    // Build a map of segment index -> edited text
+    var edits = {};
+    document.querySelectorAll('.seg-edit').forEach(function(ta) {
+        var idx = parseInt(ta.dataset.segIdx, 10);
+        edits[idx] = ta.value;
+    });
+
+    // Deep copy corrections
+    var data = JSON.parse(JSON.stringify(corrCorrections));
+
+    // Iterate segments in original order (corrSegments) and apply edits
+    corrSegments.forEach(function(seg, i) {
+        var editedText = edits[i];
+        if (editedText === undefined) return;
+
+        if (seg.kind === 'paragraph') {
+            // Find matching paragraph by index
+            var paras = data.paragraphs || [];            for (var j = 0; j < paras.length; j++) {
+                if (paras[j].index === seg.index) {
+                    paras[j].translation = editedText;
+                    break;
+                }
+            }
+        } else {
+            // Find matching table cell
+            var tables = data.tables || [];
+            for (var t = 0; t < tables.length; t++) {
+                if (tables[t].index !== seg.ti) continue;
+                var rows = tables[t].rows || [];
+                for (var r = 0; r < rows.length; r++) {
+                    if (rows[r].index !== seg.ri) continue;
+                    var cells = rows[r].cells || [];
+                    for (var c = 0; c < cells.length; c++) {
+                        if (cells[c].cell_index === seg.ci && cells[c].para_index === seg.pi) {
+                            cells[c].translation = editedText;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    return data;
+}
+
+async function buildCorrectedDoc(editedCorrections) {
+    corrErrorBox.classList.remove('visible');
+    corrResultCard.classList.remove('visible');
+    document.getElementById('corr-review-card').classList.remove('visible');
+    corrProgress.classList.add('visible');
+    document.getElementById('btn-corr-apply').disabled = true;
+
+    try {
+        setCPhase('insert', 'active', 'Building corrected document...');
+
+        var fd = new FormData();
+        fd.append('file', corrFile);
+        fd.append('corrections',
+            new Blob([JSON.stringify(editedCorrections)], { type: 'application/json' }),
+            'corrections.json');
+
+        var resp = await fetch('/api/correct-apply', { method: 'POST', body: fd });
+
+        if (!resp.ok) {
+            var err = await resp.json().catch(function() { return {}; });
+            throw new Error(err.error || 'Server error (' + resp.status + ')');
+        }
+
+        setCPhase('insert', 'done', 'Done');
+
+        var blob = await resp.blob();
+        var url = URL.createObjectURL(blob);
+        var dl = document.getElementById('corr-download-btn');
+        if (dl.dataset.blobUrl) URL.revokeObjectURL(dl.dataset.blobUrl);
+        dl.href = url;
+        dl.dataset.blobUrl = url;
+        dl.download = (corrBaseName || corrFile.name.replace(/\.docx$/i, '')) + '_Corrected.docx';
+
+        corrProgress.classList.remove('visible');
+        corrResultCard.classList.add('visible');
+
+        // Show score badge on result card
+        document.getElementById('corr-verify-badge').innerHTML = corrBadgeHtml || '';
+
+        dl.click();
+        refreshFreeBadge();
+
+    } catch(e) {
+        corrProgress.classList.remove('visible');
+        corrErrorBox.textContent = e.message;
+        corrErrorBox.classList.add('visible');
+        document.getElementById('corr-review-card').classList.add('visible');
+        document.getElementById('btn-corr-apply').disabled = false;
+    }
+}
+
+document.getElementById('btn-corr-apply').addEventListener('click', function() {
+    var edited = applyCorrectionEdits();
+    buildCorrectedDoc(edited);
+});
+
+document.getElementById('btn-corr-skip').addEventListener('click', function() {
+    buildCorrectedDoc(corrCorrections);
+});
+
 document.getElementById('corr-btn-restart').addEventListener('click', resetCorrection);
 
 function resetCorrection() {
     corrFile = null;
+    corrCorrections = null;
+    corrSegments = [];
+    corrBaseName = '';
+    corrCmcScore = null;
+    corrBadgeHtml = '';
     corrFileInput.value = '';
     corrUploadArea.classList.remove('hidden');
     corrFileCard.classList.remove('visible');
     corrProgress.classList.remove('visible');
     corrErrorBox.classList.remove('visible');
     corrResultCard.classList.remove('visible');
+    document.getElementById('corr-review-card').classList.remove('visible');
     ['extract', 'correct', 'verify', 'insert'].forEach(id => setCPhase(id, ''));
-    const dl = document.getElementById('corr-download-btn');
+    var dl = document.getElementById('corr-download-btn');
     if (dl.dataset.blobUrl) { URL.revokeObjectURL(dl.dataset.blobUrl); delete dl.dataset.blobUrl; }
     dl.href = '#';
 }
