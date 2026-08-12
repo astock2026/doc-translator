@@ -617,6 +617,8 @@ def verify_corrections(corrections_path, output_path=None,
     for i, item in enumerate(items):
         v = verdicts.get(i, "REVIEW")
         note = notes.get(i, "")
+        orig_norm = " ".join(item["original_en"].split())
+        eng_norm = " ".join(item["english"].split())
         seg = {
             "location": item["location"],
             "chinese": item["chinese"],
@@ -625,6 +627,7 @@ def verify_corrections(corrections_path, output_path=None,
             "verdict": v,
             "note": note,
             "kind": item["kind"],
+            "changed": bool(orig_norm) and orig_norm != eng_norm,
         }
         # Include structural info for client-side updates
         if item["kind"] == "paragraph":

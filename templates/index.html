@@ -1428,17 +1428,24 @@ function showCorrectionReview(score, status, data) {
     var segContainer = document.getElementById('corr-segments');
     var note = document.getElementById('corr-review-note');
 
-    // Sort segments: FAIL first, then REVIEW, then PASS
+    // Only show segments where the text actually changed
     var order = { 'FAIL': 0, 'REVIEW': 1, 'PASS': 2 };
-    var sorted = corrSegments.map(function(seg, i) {
+    var visible = corrSegments.map(function(seg, i) {
         return { seg: seg, origIdx: i };
+    }).filter(function(item) {
+        return item.seg.changed !== false;
     }).sort(function(a, b) {
         return (order[a.seg.verdict] || 3) - (order[b.seg.verdict] || 3);
     });
 
+    var unchangedCount = corrSegments.length - visible.length;
+
     // Build segment cards
     segContainer.innerHTML = '';
-    sorted.forEach(function(item) {
+    if (visible.length === 0) {
+        segContainer.innerHTML = '<div class="corr-segment seg-pass"><div class="seg-header"><span class="seg-location">No changes needed</span></div><div class="seg-chinese">All segments passed review with no corrections needed.</div></div>';
+    } else {
+        visible.forEach(function(item) {
         var seg = item.seg;
         var origIdx = item.origIdx;
         var div = document.createElement('div');
@@ -1463,12 +1470,14 @@ function showCorrectionReview(score, status, data) {
         div.innerHTML = html;
         segContainer.appendChild(div);
     });
+    }
 
-    var failCount = data.fail_count || 0;
-    var reviewCount = data.review_count || 0;
-    var totalCount = data.total_segments || 0;
-    var passCount = totalCount - failCount - reviewCount;
-    note.textContent = failCount + ' FAIL \u00b7 ' + reviewCount + ' REVIEW \u00b7 ' + passCount + ' PASS  (' + totalCount + ' total). Edit any segment above, then click "Build Document".';
+    var noteText = visible.length + ' segment(s) with changes';
+    if (unchangedCount > 0) {
+        noteText += ' \u00b7 ' + unchangedCount + ' unchanged (hidden)';
+    }
+    noteText += '. Edit any segment above, then click "Build Document".';
+    note.textContent = noteText;
 
     document.getElementById('corr-review-card').classList.add('visible');
     document.getElementById('btn-corr-apply').disabled = false;
