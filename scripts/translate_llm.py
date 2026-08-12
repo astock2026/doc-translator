@@ -463,10 +463,11 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
                 translations[global_idx] = eng
                 
         except Exception as e:
-            # Mark entire batch as failed
-            for batch_idx in range(len(batch_texts)):
-                global_idx = batch_start + batch_idx
-                translations[global_idx] = f"[TRANSLATION ERROR: {e}]"
+            # Per product rule: on LLM failure, do NOT produce a partial
+            # deliverable with [TRANSLATION ERROR: ...] placeholders.
+            # Abort so the pipeline returns the friendly "try again later"
+            # message to the user instead.
+            raise RuntimeError(f"LLM translation failed: {e}") from e
         
         progress = min(batch_end, total)
         sys.stdout.write(f"\r  Translating batch {batch_start//BATCH_SIZE + 1}/{((total-1)//BATCH_SIZE)+1}  ({progress}/{total})")
@@ -483,7 +484,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
 
     for i, (idx, chn) in enumerate(para_items):
         eng = translations.get(i, "")
-        if eng and not eng.startswith("[TRANSLATION ERROR"):
+        if eng:
             translated += 1
         result["paragraphs"].append({
             "index": idx,
@@ -496,7 +497,7 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
     cell_idx = len(para_items)
     for ti, ri, ci, pi, chn in cell_items:
         eng = translations.get(cell_idx, "")
-        if eng and not eng.startswith("[TRANSLATION ERROR"):
+        if eng:
             translated += 1
         key = ti
         if key not in table_map:
