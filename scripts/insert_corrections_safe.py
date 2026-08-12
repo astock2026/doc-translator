@@ -55,30 +55,55 @@ def _run_text(run_elem):
     return "".join(parts)
 
 
-def _text_run(text):
-    """A Times New Roman 10.5pt (21 half-points), non-italic English run."""
+def _get_rpr_from_run(run_elem):
+    """Return the w:rPr element from a run, or None if it has none."""
+    for child in run_elem:
+        if child.tag == qn("w:rPr"):
+            return child
+    return None
+
+
+def _text_run(text, rpr_template=None):
+    """An English run.
+
+    If *rpr_template* (a w:rPr element from the original English run) is
+    provided, it is deep-copied so the corrected text inherits the exact
+    same formatting (font family, size, color, etc.) as the original
+    English it replaces.
+
+    Otherwise a Times New Roman 10.5pt (21 half-points), non-italic run is
+    created as a fallback.
+    """
     r = etree.Element(qn("w:r"))
-    rPr = etree.SubElement(r, qn("w:rPr"))
-    rFonts = etree.SubElement(rPr, qn("w:rFonts"))
-    rFonts.set(qn("w:ascii"), "Times New Roman")
-    rFonts.set(qn("w:hAnsi"), "Times New Roman")
-    rFonts.set(qn("w:eastAsia"), "Times New Roman")
-    sz = etree.SubElement(rPr, qn("w:sz"))
-    sz.set(qn("w:val"), "21")
-    szCs = etree.SubElement(rPr, qn("w:szCs"))
-    szCs.set(qn("w:val"), "21")
-    i_elem = etree.SubElement(rPr, qn("w:i"))
-    i_elem.set(qn("w:val"), "false")
-    iCs = etree.SubElement(rPr, qn("w:iCs"))
-    iCs.set(qn("w:val"), "false")
+    if rpr_template is not None:
+        r.append(copy.deepcopy(rpr_template))
+    else:
+        rPr = etree.SubElement(r, qn("w:rPr"))
+        rFonts = etree.SubElement(rPr, qn("w:rFonts"))
+        rFonts.set(qn("w:ascii"), "Times New Roman")
+        rFonts.set(qn("w:hAnsi"), "Times New Roman")
+        rFonts.set(qn("w:eastAsia"), "Times New Roman")
+        sz = etree.SubElement(rPr, qn("w:sz"))
+        sz.set(qn("w:val"), "21")
+        szCs = etree.SubElement(rPr, qn("w:szCs"))
+        szCs.set(qn("w:val"), "21")
+        i_elem = etree.SubElement(rPr, qn("w:i"))
+        i_elem.set(qn("w:val"), "false")
+        iCs = etree.SubElement(rPr, qn("w:iCs"))
+        iCs.set(qn("w:val"), "false")
     t = etree.SubElement(r, qn("w:t"))
     t.text = text
     t.set(qn("xml:space"), "preserve")
     return r
 
 
-def make_corrected_runs(eng_text):
-    """Runs for corrected English, inserting w:br between lines."""
+def make_corrected_runs(eng_text, rpr_template=None):
+    """Runs for corrected English, inserting w:br between lines.
+
+    *rpr_template* (if provided) is passed through to _text_run so every
+    text run inherits the original English formatting (font size, family,
+    etc.).
+    """
     lines = str(eng_text).split("\n")
     runs = []
     for i, line in enumerate(lines):
@@ -87,9 +112,9 @@ def make_corrected_runs(eng_text):
             br_run.append(etree.Element(qn("w:br")))
             runs.append(br_run)
         if line:
-            runs.append(_text_run(line))
+            runs.append(_text_run(line, rpr_template))
     if not runs:
-        runs.append(_text_run(""))
+        runs.append(_text_run("", rpr_template))
     return runs
 
 
@@ -186,7 +211,12 @@ def _keep_run_suffix(run_elem, keep_from):
 def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
     """Replace the English portion of a mixed CN+EN paragraph with the
     corrected English, preserving the Chinese runs (before AND after the
-    English) together with their formatting."""
+    English) together with their formatting.
+
+    The run properties (font size, family, etc.) of the first English-
+    region run are captured and applied to the corrected text so it
+    matches the original English's appearance.
+    """
     runs = [r for r in p_elem if r.tag == qn("w:r")]
     full = "".join(_run_text(r) for r in runs)
     region = _locate_en_region(full, cn_part, en_part)
@@ -200,6 +230,7 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
     suffix_run = None    # run straddling the region end, truncated to its suffix
     suffix_clone = None  # deepcopy of a single run spanning the whole region (suffix part)
     first_tail_run = None  # first run fully after the region (insert point)
+    rpr_template = None  # rPr captured from the first English-region run
 
     for r in runs:
         rtext = _run_text(r)
@@ -212,7 +243,11 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
             continue                       # fully after the region — keep
         if rend <= start:
             continue                       # fully before the region — keep
-        # The run intersects [start, end)
+        # The run intersects [start, end) — this is an English-region run.
+        # Capture its rPr (first one wins) so the corrected text inherits
+        # the original English font size and formatting.
+        if rpr_template is None:
+            rpr_template = _get_rpr_from_run(r)
         if rstart < start:
             if rend > end:
                 # a single run spans the whole region — clone for the suffix
@@ -238,7 +273,7 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
     for r in to_remove:
         p_elem.remove(r)
 
-    new_runs = make_corrected_runs(corrected_en)
+    new_runs = make_corrected_runs(corrected_en, rpr_template)
     if suffix_run is not None:
         # corrected English goes right before the trailing Chinese run
         for nr in new_runs:
@@ -265,10 +300,24 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
 
 
 def set_paragraph_text(p_elem, text):
-    """Replace all runs of a paragraph with the corrected English text."""
-    for r in [r for r in p_elem if r.tag == qn("w:r")]:
+    """Replace all runs of a paragraph with the corrected English text.
+
+    The formatting (font size, family, etc.) of the first existing run is
+    captured *before* the runs are removed, so the corrected text inherits
+    the same appearance as the original English it replaces.
+    """
+    runs = [r for r in p_elem if r.tag == qn("w:r")]
+    # Capture rPr from the first run that has one, so the corrected text
+    # keeps the original English font size and other formatting.
+    rpr_template = None
+    for r in runs:
+        rpr = _get_rpr_from_run(r)
+        if rpr is not None:
+            rpr_template = rpr
+            break
+    for r in runs:
         p_elem.remove(r)
-    for run in make_corrected_runs(text):
+    for run in make_corrected_runs(text, rpr_template):
         p_elem.append(run)
 
 
