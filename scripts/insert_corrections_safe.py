@@ -20,11 +20,95 @@ Usage:
     python insert_corrections_safe.py <input.docx> <corrections.json> [--output out.docx]
 """
 import copy
+import datetime
 import json
 import sys
 from lxml import etree
 import docx
 from docx.oxml.ns import qn
+
+
+# ── Track changes helpers ─────────────────────────────────────────────
+
+_change_id_counter = [0]
+
+
+def _next_change_id():
+    _change_id_counter[0] += 1
+    return str(_change_id_counter[0])
+
+
+def _get_timestamp():
+    return datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _convert_run_to_deleted(run_elem):
+    """Deep-copy a run and convert its w:t to w:delText (for w:del)."""
+    r = copy.deepcopy(run_elem)
+    for child in r:
+        if child.tag == qn("w:t"):
+            child.tag = qn("w:delText")
+    return r
+
+
+def _wrap_runs_in_del(runs, author="DocTranslator"):
+    """Wrap deep-copied runs (w:t→w:delText) in a single w:del element."""
+    if not runs:
+        return None
+    del_elem = etree.Element(qn("w:del"))
+    del_elem.set(qn("w:id"), _next_change_id())
+    del_elem.set(qn("w:author"), author)
+    del_elem.set(qn("w:date"), _get_timestamp())
+    for r in runs:
+        del_elem.append(_convert_run_to_deleted(r))
+    return del_elem
+
+
+def _wrap_runs_in_ins(runs, author="DocTranslator"):
+    """Wrap runs in a single w:ins element."""
+    if not runs:
+        return None
+    ins_elem = etree.Element(qn("w:ins"))
+    ins_elem.set(qn("w:id"), _next_change_id())
+    ins_elem.set(qn("w:author"), author)
+    ins_elem.set(qn("w:date"), _get_timestamp())
+    for r in runs:
+        ins_elem.append(r)
+    return ins_elem
+
+
+def _make_deleted_partial_runs(run_elem, text_start, text_end):
+    """Create run(s) containing text[text_start:text_end] of *run_elem*,
+    using w:delText (for use inside w:del). Preserves line breaks as w:br.
+
+    Returns a list of w:r elements (empty list if the slice is empty).
+    """
+    full_text = _run_text(run_elem)
+    del_text = full_text[text_start:text_end]
+    if not del_text:
+        return []
+
+    rpr = _get_rpr_from_run(run_elem)
+    runs = []
+    lines = del_text.split("\n")
+    for i, line in enumerate(lines):
+        if i > 0:
+            br_run = etree.Element(qn("w:r"))
+            if rpr is not None:
+                br_run.append(copy.deepcopy(rpr))
+            br_run.append(etree.Element(qn("w:br")))
+            runs.append(br_run)
+        if line:
+            r = etree.Element(qn("w:r"))
+            if rpr is not None:
+                r.append(copy.deepcopy(rpr))
+            dt = etree.SubElement(r, qn("w:delText"))
+            dt.text = line
+            dt.set(qn("xml:space"), "preserve")
+            runs.append(r)
+    return runs
 
 
 def has_chinese(text):
@@ -208,7 +292,8 @@ def _keep_run_suffix(run_elem, keep_from):
         # items fully after keep_from stay untouched
 
 
-def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
+def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en,
+                                  track_changes=False):
     """Replace the English portion of a mixed CN+EN paragraph with the
     corrected English, preserving the Chinese runs (before AND after the
     English) together with their formatting.
@@ -216,6 +301,9 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
     The run properties (font size, family, etc.) of the first English-
     region run are captured and applied to the corrected text so it
     matches the original English's appearance.
+
+    When *track_changes* is True, the old English text is wrapped in
+    w:del and the new text in w:ins so Word displays tracked changes.
     """
     runs = [r for r in p_elem if r.tag == qn("w:r")]
     full = "".join(_run_text(r) for r in runs)
@@ -231,6 +319,7 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
     suffix_clone = None  # deepcopy of a single run spanning the whole region (suffix part)
     first_tail_run = None  # first run fully after the region (insert point)
     rpr_template = None  # rPr captured from the first English-region run
+    deleted_runs = []    # runs to wrap in w:del (for track changes)
 
     for r in runs:
         rtext = _run_text(r)
@@ -255,12 +344,33 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
                 _keep_run_suffix(clone, end - rstart)
                 if _run_text(clone):
                     suffix_clone = clone
-            _truncate_run_at(r, start - rstart)
-            prefix_run = r
-            if not _run_text(r):
-                to_remove.append(r)
-                prefix_run = None
+                # Capture deleted portion [start, end) for track changes
+                if track_changes:
+                    deleted_runs.extend(
+                        _make_deleted_partial_runs(r, start - rstart, end - rstart)
+                    )
+                _truncate_run_at(r, start - rstart)
+                prefix_run = r
+                if not _run_text(r):
+                    to_remove.append(r)
+                    prefix_run = None
+            else:
+                # straddles start only — deleted portion [start, rend)
+                if track_changes:
+                    deleted_runs.extend(
+                        _make_deleted_partial_runs(r, start - rstart, rlen)
+                    )
+                _truncate_run_at(r, start - rstart)
+                prefix_run = r
+                if not _run_text(r):
+                    to_remove.append(r)
+                    prefix_run = None
         elif rend > end:
+            # straddles end only — deleted portion [rstart, end) = [0, end-rstart)
+            if track_changes:
+                deleted_runs.extend(
+                    _make_deleted_partial_runs(r, 0, end - rstart)
+                )
             _keep_run_suffix(r, end - rstart)
             suffix_run = r
             if not _run_text(r):
@@ -268,43 +378,71 @@ def replace_english_in_paragraph(p_elem, cn_part, en_part, corrected_en):
                 suffix_run = None
         else:
             # fully inside the region — remove
+            if track_changes:
+                deleted_runs.append(_convert_run_to_deleted(r))
             to_remove.append(r)
 
     for r in to_remove:
         p_elem.remove(r)
 
     new_runs = make_corrected_runs(corrected_en, rpr_template)
-    if suffix_run is not None:
-        # corrected English goes right before the trailing Chinese run
-        for nr in new_runs:
-            suffix_run.addprevious(nr)
-    elif suffix_clone is not None:
-        # corrected English goes between the prefix and the cloned suffix
-        anchor = prefix_run
-        if anchor is not None:
-            for nr in new_runs:
-                anchor.addnext(nr)
-                anchor = nr
-            anchor.addnext(suffix_clone)
-        else:
-            for nr in new_runs:
-                p_elem.append(nr)
-            p_elem.append(suffix_clone)
-    elif first_tail_run is not None:
-        for nr in new_runs:
-            first_tail_run.addprevious(nr)
+
+    # Build w:del and w:ins elements for track changes
+    del_elem = None
+    ins_elem = None
+    if track_changes:
+        del_elem = _wrap_runs_in_del(deleted_runs) if deleted_runs else None
+        ins_elem = _wrap_runs_in_ins(new_runs)
     else:
-        for nr in new_runs:
-            p_elem.append(nr)
+        ins_elem = None
+
+    # Determine insertion anchor and order
+    # For track changes: insert [del_elem, ins_elem] at the anchor
+    # For non-track-changes: insert new_runs at the anchor (original behavior)
+    def _insert_elements(elements):
+        """Insert a list of elements at the correct position in the paragraph."""
+        if suffix_run is not None:
+            for el in elements:
+                suffix_run.addprevious(el)
+        elif suffix_clone is not None:
+            anchor = prefix_run
+            if anchor is not None:
+                for el in elements:
+                    anchor.addnext(el)
+                    anchor = el
+                anchor.addnext(suffix_clone)
+            else:
+                for el in elements:
+                    p_elem.append(el)
+                p_elem.append(suffix_clone)
+        elif first_tail_run is not None:
+            for el in elements:
+                first_tail_run.addprevious(el)
+        else:
+            for el in elements:
+                p_elem.append(el)
+
+    if track_changes:
+        elements = []
+        if del_elem is not None:
+            elements.append(del_elem)
+        if ins_elem is not None:
+            elements.append(ins_elem)
+        _insert_elements(elements)
+    else:
+        _insert_elements(new_runs)
     return True
 
 
-def set_paragraph_text(p_elem, text):
+def set_paragraph_text(p_elem, text, track_changes=False):
     """Replace all runs of a paragraph with the corrected English text.
 
     The formatting (font size, family, etc.) of the first existing run is
     captured *before* the runs are removed, so the corrected text inherits
     the same appearance as the original English it replaces.
+
+    When *track_changes* is True, old runs are wrapped in w:del and new
+    runs in w:ins so Word displays them as tracked changes.
     """
     runs = [r for r in p_elem if r.tag == qn("w:r")]
     # Capture rPr from the first run that has one, so the corrected text
@@ -315,10 +453,25 @@ def set_paragraph_text(p_elem, text):
         if rpr is not None:
             rpr_template = rpr
             break
-    for r in runs:
-        p_elem.remove(r)
-    for run in make_corrected_runs(text, rpr_template):
-        p_elem.append(run)
+
+    if track_changes and runs:
+        # Wrap old runs in w:del (deep-copied, w:t→w:delText)
+        del_elem = _wrap_runs_in_del(runs)
+        # Remove old runs
+        for r in runs:
+            p_elem.remove(r)
+        # Add w:del then w:ins
+        if del_elem is not None:
+            p_elem.append(del_elem)
+        new_runs = make_corrected_runs(text, rpr_template)
+        ins_elem = _wrap_runs_in_ins(new_runs)
+        if ins_elem is not None:
+            p_elem.append(ins_elem)
+    else:
+        for r in runs:
+            p_elem.remove(r)
+        for run in make_corrected_runs(text, rpr_template):
+            p_elem.append(run)
 
 
 def get_element_path(elem, tree):
@@ -330,7 +483,8 @@ def get_element_path(elem, tree):
 
 # ── Main ───────────────────────────────────────────────────────────────
 
-def insert_corrections_safe(input_path, corrections_path, output_path=None):
+def insert_corrections_safe(input_path, corrections_path, output_path=None,
+                             track_changes=False):
     doc = docx.Document(input_path)
     tree = doc.element.getroottree()
 
@@ -357,13 +511,14 @@ def insert_corrections_safe(input_path, corrections_path, output_path=None):
         p_elem = paragraph_elements[idx]
         if mode == "same":
             ok = replace_english_in_paragraph(
-                p_elem, item.get("text", ""), item.get("original_en", ""), eng
+                p_elem, item.get("text", ""), item.get("original_en", ""), eng,
+                track_changes=track_changes,
             )
             if not ok:
                 para_skipped += 1
                 continue
         else:
-            set_paragraph_text(p_elem, eng)
+            set_paragraph_text(p_elem, eng, track_changes=track_changes)
         replaced += 1
 
     # --- Table cells (with merged-cell dedup) ---
@@ -405,34 +560,39 @@ def insert_corrections_safe(input_path, corrections_path, output_path=None):
                         cell_item.get("text", ""),
                         cell_item.get("original_en", ""),
                         eng,
+                        track_changes=track_changes,
                     )
                     if not ok:
                         cell_skipped += 1
                         continue
                 else:
-                    set_paragraph_text(target_elem, eng)
+                    set_paragraph_text(target_elem, eng, track_changes=track_changes)
                 if elem_path:
                     modified_paths.add(elem_path)
                 cell_replaced += 1
 
     out = output_path or input_path
     doc.save(out)
+    mode_label = " (track changes)" if track_changes else ""
     print(
         f"Replaced {replaced} paragraph corrections (skipped {para_skipped}), "
-        f"{cell_replaced} table cell corrections (skipped {cell_skipped}) → {out}"
+        f"{cell_replaced} table cell corrections (skipped {cell_skipped}){mode_label} → {out}"
     )
     return out
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python insert_corrections_safe.py <input.docx> <corrections.json> [--output out.docx]")
+        print("Usage: python insert_corrections_safe.py <input.docx> <corrections.json> [--output out.docx] [--track-changes]")
         sys.exit(1)
     inp = sys.argv[1]
     corr = sys.argv[2]
     out = None
+    tc = False
     if "--output" in sys.argv:
         idx = sys.argv.index("--output")
         if idx + 1 < len(sys.argv):
             out = sys.argv[idx + 1]
-    insert_corrections_safe(inp, corr, out)
+    if "--track-changes" in sys.argv:
+        tc = True
+    insert_corrections_safe(inp, corr, out, track_changes=tc)
