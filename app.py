@@ -14,6 +14,7 @@ with the full CMC/GMP terminology glossary.
 import os
 import sys
 import json
+import re
 import subprocess
 import shutil
 import uuid
@@ -36,6 +37,19 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _safe_error_detail(exc):
+    """Short, redacted version of the real error for diagnostics.
+
+    The response body only shows the friendly message (product rule), but the
+    real cause is exposed via the X-Error-Detail response header so it can be
+    inspected in browser DevTools without leaking raw errors to end users.
+    """
+    detail = str(exc)
+    # Never let an API key leak out (Gemini URLs carry ?key=...)
+    detail = re.sub(r"key=[^&\s\"']+", "key=REDACTED", detail)
+    return detail[:300]
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
@@ -584,11 +598,14 @@ def insert():
 
     except Exception as e:
         logger.exception("Insert failed")
-        return jsonify({
+        resp = jsonify({
             "error": "The model is experiencing high demand. "
                      "Spikes in demand are usually temporary. "
                      "Please try again later."
-        }), 503
+        })
+        resp.status_code = 503
+        resp.headers["X-Error-Detail"] = _safe_error_detail(e)
+        return resp
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
 
@@ -751,11 +768,14 @@ def translate():
 
     except Exception as e:
         logger.exception("Translate pipeline failed")
-        return jsonify({
+        resp = jsonify({
             "error": "The model is experiencing high demand. "
                      "Spikes in demand are usually temporary. "
                      "Please try again later."
-        }), 503
+        })
+        resp.status_code = 503
+        resp.headers["X-Error-Detail"] = _safe_error_detail(e)
+        return resp
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
 
@@ -894,11 +914,14 @@ def correct():
 
     except Exception as e:
         logger.exception("Correction pipeline failed")
-        return jsonify({
+        resp = jsonify({
             "error": "The model is experiencing high demand. "
                      "Spikes in demand are usually temporary. "
                      "Please try again later."
-        }), 503
+        })
+        resp.status_code = 503
+        resp.headers["X-Error-Detail"] = _safe_error_detail(e)
+        return resp
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
 
