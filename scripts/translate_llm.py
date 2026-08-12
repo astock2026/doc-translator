@@ -163,6 +163,12 @@ def _call_openai_batch(texts, api_base, api_key, model):
                 sys.stdout.flush()
                 time.sleep(wait)
                 continue
+            if e.code == 503 and attempt < MAX_RETRIES - 1:
+                wait = 2 ** (attempt + 1) * 5  # overload spike; API says temporary
+                sys.stdout.write(f"\r  Model overloaded (503), retrying in {wait}s...")
+                sys.stdout.flush()
+                time.sleep(wait)
+                continue
             raise RuntimeError(f"LLM API error {e.code}: {body[:500]}")
         except URLError as e:
             if attempt < MAX_RETRIES - 1:
@@ -213,6 +219,12 @@ def _call_gemini_batch(texts, api_key, model):
             if e.code == 429 and attempt < MAX_RETRIES - 1:
                 wait = 2 ** (attempt + 1) * 3  # longer backoff for Gemini free tier
                 sys.stdout.write(f"\r  Rate limited, retrying in {wait}s...")
+                sys.stdout.flush()
+                time.sleep(wait)
+                continue
+            if e.code == 503 and attempt < MAX_RETRIES - 1:
+                wait = 2 ** (attempt + 1) * 5  # overload spike; Gemini says temporary
+                sys.stdout.write(f"\r  Model overloaded (503), retrying in {wait}s...")
                 sys.stdout.flush()
                 time.sleep(wait)
                 continue
