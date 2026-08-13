@@ -44,6 +44,14 @@ VERIFY_BATCH_SIZE = 15   # pairs per API call (verification phase — bigger bat
                          # finish inside the gunicorn worker timeout)
 MIN_DELAY = 1.0          # seconds between batches
 MAX_RETRIES = 5          # retries on transient errors (503 high-demand, 429 rate-limit, timeouts)
+MAX_OUTPUT_TOKENS = 8192 # per-call output cap; if hit, _call_llm_no_truncate splits the batch
+
+MIN_SPLIT_SIZE = 1       # smallest sub-batch before giving up on truncation
+
+
+class TruncationError(RuntimeError):
+    """The model hit the output token cap mid-response (finishReason MAX_TOKENS).
+    The batch does NOT fit under the cap and must be split and re-sent."""
 
 
 # ── CMC / Regulatory / Quality correction prompt ───────────────────────
@@ -156,7 +164,7 @@ def _call_openai_batch(pairs, api_base, api_key, model, system_prompt, user_intr
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.1,
-        "max_tokens": 4096,
+        "max_tokens": MAX_OUTPUT_TOKENS,
     }
 
     data = json.dumps(payload).encode("utf-8")
@@ -169,7 +177,14 @@ def _call_openai_batch(pairs, api_base, api_key, model, system_prompt, user_intr
         try:
             resp = urlopen(req, timeout=90)
             result = json.loads(resp.read().decode("utf-8"))
-            raw = result["choices"][0]["message"]["content"].strip()
+            choice = result["choices"][0]
+            if choice.get("finish_reason") == "length":
+                # Response hit max_tokens and was cut off mid-output. The
+                # salvaged text would contain broken sentences — raise so the
+                # caller can split the batch and retry instead.
+                raise TruncationError(
+                    "LLM response truncated (max_tokens reached); batch must be split")
+            raw = choice["message"]["content"].strip()
             return _parse_batch_response(raw, len(pairs))
         except HTTPError as e:
             body = e.read().decode("utf-8") if e.fp else ""
@@ -208,7 +223,7 @@ def _call_gemini_batch(pairs, api_key, model, system_prompt, user_intro):
     payload = {
         "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 4096},
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": MAX_OUTPUT_TOKENS},
     }
 
     for attempt in range(MAX_RETRIES):
@@ -217,7 +232,14 @@ def _call_gemini_batch(pairs, api_key, model, system_prompt, user_intro):
         try:
             resp = urlopen(req, timeout=90)
             result = json.loads(resp.read().decode("utf-8"))
-            raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+            candidate = result["candidates"][0]
+            if candidate.get("finishReason") == "MAX_TOKENS":
+                # Response hit maxOutputTokens and was cut off mid-sentence.
+                # The salvaged text would contain broken sentences — raise so
+                # the caller can split the batch and retry instead.
+                raise TruncationError(
+                    "Gemini response truncated (maxOutputTokens reached); batch must be split")
+            raw = candidate["content"]["parts"][0]["text"].strip()
             return _parse_batch_response(raw, len(pairs))
         except HTTPError as e:
             body = e.read().decode("utf-8") if e.fp else ""
@@ -289,6 +311,47 @@ def call_llm(pairs, system_prompt, user_intro,
         if not api_key:
             raise RuntimeError("LLM_API_KEY is required.")
         return _call_openai_batch(pairs, api_base, api_key, model, system_prompt, user_intro)
+
+
+def _call_llm_no_truncate(pairs, system_prompt, user_intro,
+                          api_base=None, api_key=None, model=None, provider=None,
+                          depth=0):
+    """Call the LLM, guaranteeing complete (non-truncated) output.
+
+    When the model hits the output token cap mid-batch (finishReason
+    MAX_TOKENS), the batch is split in half and each half is re-sent
+    recursively until every sub-batch fits under the cap. This prevents the
+    broken-sentence symptom where a 10-pair batch exceeds maxOutputTokens and
+    the last segment comes back cut off mid-sentence.
+
+    Returns dict {local_idx: result_text} covering ALL pairs in the batch.
+    Raises RuntimeError only if a SINGLE pair still truncates (the segment is
+    longer than the model's maximum output — nothing more we can split).
+    """
+    try:
+        return call_llm(pairs, system_prompt, user_intro,
+                        api_base, api_key, model, provider)
+    except TruncationError as e:
+        if len(pairs) <= MIN_SPLIT_SIZE:
+            raise RuntimeError(
+                "LLM output was truncated even for a single segment — the "
+                "segment exceeds the model's maximum output length. Please "
+                "shorten that segment or raise the output limit.") from e
+        print(f"  [TRUNCATED] batch of {len(pairs)} exceeds output cap — "
+              f"splitting into {len(pairs) // 2}/{len(pairs) - len(pairs) // 2}",
+              file=sys.stderr)
+        mid = len(pairs) // 2
+        left = _call_llm_no_truncate(
+            pairs[:mid], system_prompt, user_intro,
+            api_base, api_key, model, provider, depth + 1)
+        right = _call_llm_no_truncate(
+            pairs[mid:], system_prompt, user_intro,
+            api_base, api_key, model, provider, depth + 1)
+        merged = {}
+        merged.update(left)
+        for k, v in right.items():
+            merged[mid + k] = v
+        return merged
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -441,7 +504,7 @@ def correct_content(content_path, output_path=None,
         batch_end = min(batch_start + BATCH_SIZE, total)
         pairs = all_pairs[batch_start:batch_end]
         try:
-            batch_results = call_llm(
+            batch_results = _call_llm_no_truncate(
                 pairs, CORRECT_SYSTEM_PROMPT,
                 "Correct the English in each pair below. Keep the Chinese unchanged; output only the corrected English.",
                 api_base, api_key, model, provider,
@@ -630,7 +693,7 @@ def verify_corrections(corrections_path, output_path=None, verify_timeout=None,
                   file=sys.stderr)
             break
         try:
-            res = call_llm(
+            res = _call_llm_no_truncate(
                 pairs[batch_start:batch_end], VERIFY_SYSTEM_PROMPT,
                 "Audit each pair. Output exactly one verdict line per pair.",
                 api_base, api_key, model, provider,

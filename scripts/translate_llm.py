@@ -38,6 +38,12 @@ except ImportError:
 BATCH_SIZE = 10          # texts per API call
 MIN_DELAY = 1.0          # seconds between batches
 MAX_RETRIES = 5          # retries on transient errors (503 high-demand, 429 rate-limit, timeouts)
+MAX_OUTPUT_TOKENS = 8192 # per-call output cap; if hit, _call_llm_batch_no_truncate splits the batch
+
+
+class TruncationError(RuntimeError):
+    """The model hit the output token cap mid-response (finishReason MAX_TOKENS).
+    The batch does NOT fit under the cap and must be split and re-sent."""
 
 
 # ── CMC/GMP System Prompt ──────────────────────────────────────────────
@@ -174,7 +180,7 @@ def _call_openai_batch(texts, api_base, api_key, model):
             {"role": "user", "content": user_prompt},
         ],
         "temperature": 0.1,
-        "max_tokens": 4096,
+        "max_tokens": MAX_OUTPUT_TOKENS,
     }
 
     data = json.dumps(payload).encode("utf-8")
@@ -187,7 +193,14 @@ def _call_openai_batch(texts, api_base, api_key, model):
         try:
             resp = urlopen(req, timeout=90)
             result = json.loads(resp.read().decode("utf-8"))
-            raw = result["choices"][0]["message"]["content"].strip()
+            choice = result["choices"][0]
+            if choice.get("finish_reason") == "length":
+                # Response hit max_tokens mid-sentence — the salvaged text
+                # would be a broken translation. Raise so the caller splits
+                # the batch and retries instead of using the cut-off text.
+                raise TruncationError(
+                    "LLM response truncated (max_tokens reached); batch must be split")
+            raw = choice["message"]["content"].strip()
             return _parse_batch_response(raw, len(texts))
         except HTTPError as e:
             body = e.read().decode("utf-8") if e.fp else ""
@@ -247,7 +260,7 @@ def _call_gemini_batch(texts, api_key, model):
         ],
         "generationConfig": {
             "temperature": 0.1,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": MAX_OUTPUT_TOKENS,
         },
     }
 
@@ -257,7 +270,15 @@ def _call_gemini_batch(texts, api_key, model):
         try:
             resp = urlopen(req, timeout=90)
             result = json.loads(resp.read().decode("utf-8"))
-            raw = result["candidates"][0]["content"]["parts"][0]["text"].strip()
+            candidate = result["candidates"][0]
+            if candidate.get("finishReason") == "MAX_TOKENS":
+                # Response hit maxOutputTokens mid-sentence — the salvaged
+                # text would be a broken translation. Raise so the caller
+                # splits the batch and retries instead of using the cut-off
+                # text.
+                raise TruncationError(
+                    "Gemini response truncated (maxOutputTokens reached); batch must be split")
+            raw = candidate["content"]["parts"][0]["text"].strip()
             return _parse_batch_response(raw, len(texts))
         except HTTPError as e:
             body = e.read().decode("utf-8") if e.fp else ""
@@ -351,6 +372,41 @@ def call_llm_batch(texts, api_base=None, api_key=None, model=None, provider=None
         if not api_key:
             raise RuntimeError("LLM_API_KEY is required.")
         return _call_openai_batch(texts, api_base, api_key, model)
+
+
+def _call_llm_batch_no_truncate(texts, api_base=None, api_key=None, model=None,
+                                provider=None):
+    """Translate a batch guaranteeing complete (non-truncated) output.
+
+    When the model hits the output token cap mid-batch (finishReason
+    MAX_TOKENS), the batch is split in half and each half is re-sent
+    recursively until every sub-batch fits under the cap — so a long
+    paragraph can never come back cut off mid-sentence.
+
+    Returns dict {local_idx: translation} covering ALL texts in the batch.
+    Raises RuntimeError only if a SINGLE text still truncates (that segment
+    exceeds the model's maximum output length — nothing more to split).
+    """
+    try:
+        return call_llm_batch(texts, api_base, api_key, model, provider)
+    except TruncationError as e:
+        if len(texts) <= 1:
+            raise RuntimeError(
+                "LLM output was truncated even for a single segment — the "
+                "segment exceeds the model's maximum output length. Please "
+                "shorten that segment or raise the output limit.") from e
+        sys.stdout.write(f"\r  [TRUNCATED] batch of {len(texts)} exceeds output cap — splitting...")
+        sys.stdout.flush()
+        mid = len(texts) // 2
+        left = _call_llm_batch_no_truncate(
+            texts[:mid], api_base, api_key, model, provider)
+        right = _call_llm_batch_no_truncate(
+            texts[mid:], api_base, api_key, model, provider)
+        merged = {}
+        merged.update(left)
+        for k, v in right.items():
+            merged[mid + k] = v
+        return merged
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
@@ -516,7 +572,8 @@ def translate_content(content_path, output_path=None, api_base=None, api_key=Non
         texts_only = [t[0] for t in batch_texts]
         
         try:
-            batch_results = call_llm_batch(texts_only, api_base, api_key, model, provider)
+            batch_results = _call_llm_batch_no_truncate(
+                texts_only, api_base, api_key, model, provider)
             
             for batch_idx, (text, is_para) in enumerate(batch_texts):
                 eng = batch_results.get(batch_idx, "")
@@ -610,7 +667,7 @@ def _call_openai_single(prompt_text, api_base, api_key, model):
             {"role": "user", "content": f"Translate this Chinese text to English:\n\n{prompt_text}"},
         ],
         "temperature": 0.1,
-        "max_tokens": 2048,
+        "max_tokens": MAX_OUTPUT_TOKENS,
     }
     data = json.dumps(payload).encode("utf-8")
     req = Request(url, data=data, headers={
@@ -619,7 +676,12 @@ def _call_openai_single(prompt_text, api_base, api_key, model):
     })
     resp = urlopen(req, timeout=60)
     result = json.loads(resp.read().decode("utf-8"))
-    return result["choices"][0]["message"]["content"].strip()
+    choice = result["choices"][0]
+    if choice.get("finish_reason") == "length":
+        raise RuntimeError(
+            "LLM output was truncated for a single segment — it exceeds the "
+            "model's maximum output length. Please shorten that segment.")
+    return choice["message"]["content"].strip()
 
 
 def _call_gemini_single(prompt_text, api_key, model):
@@ -631,13 +693,18 @@ def _call_gemini_single(prompt_text, api_key, model):
     payload = {
         "system_instruction": {"parts": [{"text": CMC_SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": f"Translate this Chinese text to English:\n\n{prompt_text}"}]}],
-        "generationConfig": {"temperature": 0.1, "maxOutputTokens": 2048},
+        "generationConfig": {"temperature": 0.1, "maxOutputTokens": MAX_OUTPUT_TOKENS},
     }
     data = json.dumps(payload).encode("utf-8")
     req = Request(url, data=data, headers={"Content-Type": "application/json"})
     resp = urlopen(req, timeout=60)
     result = json.loads(resp.read().decode("utf-8"))
-    return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    candidate = result["candidates"][0]
+    if candidate.get("finishReason") == "MAX_TOKENS":
+        raise RuntimeError(
+            "Gemini output was truncated for a single segment — it exceeds the "
+            "model's maximum output length. Please shorten that segment.")
+    return candidate["content"]["parts"][0]["text"].strip()
 
 
 # ── CLI ────────────────────────────────────────────────────────────────
