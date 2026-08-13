@@ -405,6 +405,19 @@
         }
         .error-box.visible { display: block; }
 
+        /* Non-blocking warning banner (e.g. degraded background verification) */
+        .warning-box {
+            display: none;
+            padding: 12px 16px;
+            background: var(--warning-bg);
+            color: var(--warning);
+            border-radius: var(--radius-sm);
+            margin-bottom: 14px;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .warning-box.visible { display: block; }
+
         /* Proper-noun review */
         .review-card {
             display: none;
@@ -546,6 +559,7 @@
         .seg-verdict.verify-pass { background: var(--success-bg); color: var(--success); }
         .seg-verdict.verify-review { background: var(--warning-bg); color: var(--warning); }
         .seg-verdict.verify-fail { background: var(--danger-bg); color: var(--danger); }
+        .seg-verdict.verify-pending { background: var(--bg-secondary); color: var(--text-secondary); }
         .seg-chinese {
             font-size: 13px;
             color: var(--text-secondary);
@@ -874,6 +888,7 @@
                 Edit the English text directly — your changes will be applied to the
                 final document. Segments marked PASS need no action.
             </p>
+            <div class="warning-box" id="corr-verify-warning"></div>
             <div class="corr-segments" id="corr-segments"></div>
             <div class="review-actions">
                 <button class="btn btn-primary" id="btn-corr-apply">Build Document</button>
@@ -1372,6 +1387,8 @@ let corrFile = null;
 let corrCorrections = null;
 let corrSegments = [];
 let corrBaseName = '';
+let corrJobId = null;        // job dir for the background /api/correct-verify call
+let corrVerifyState = 'pending';  // 'pending' | 'done' | 'degraded' | 'failed'
 
 corrUploadArea.addEventListener('click', () => corrFileInput.click());
 corrUploadArea.addEventListener('dragover', e => { e.preventDefault(); corrUploadArea.classList.add('dragover'); });
@@ -1460,20 +1477,32 @@ async function startCorrection() {
             throw new Error('Unexpected server response — please try again.');
         }
 
-        const score = data.score;
-        const status = data.status;
         const corrected = (data.stats && data.stats.corrected) || '?';
 
         setCPhase('correct', 'done', `${corrected} segment(s) corrected`);
-        setCPhase('verify', 'done', data.verify_degraded ? 'Skipped (model busy)' : 'Verified');
 
         // Store for the review + apply phase
         corrCorrections = data.corrections;
         corrSegments = data.segments || [];
         corrBaseName = data.base_name || corrFile.name.replace(/\.docx$/i, '');
+        corrJobId = data.job_id || null;
+        corrVerifyState = 'pending';
+        setVerifyWarning('');
 
-        corrProgress.classList.remove('visible');
-        showCorrectionReview(score, status, data);
+        // Show the review card immediately — badges are painted in the
+        // background once /api/correct-verify returns.
+        setCPhase('verify', 'active', 'Verifying in background...');
+        showCorrectionReview();
+
+        if (corrJobId) {
+            runVerification(corrJobId);
+        } else {
+            setCPhase('verify', 'done', 'Skipped (no job id)');
+            corrVerifyState = 'failed';
+            corrProgress.classList.remove('visible');
+            showCorrectionReview();
+            setVerifyWarning('⚠️ Verification could not start — please review every segment below manually.');
+        }
 
     } catch(e) {
         corrProgress.classList.remove('visible');
@@ -1482,11 +1511,98 @@ async function startCorrection() {
     }
 }
 
-function showCorrectionReview(score, status, data) {
+async function runVerification(jobId) {
+    // Non-charging endpoint: safe to auto-retry transient 503/429.
+    try {
+        const vresp = await fetchWithRetry('/api/correct-verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_id: jobId })
+        }, 1, 5000);
+
+        if (!vresp.ok) {
+            const err = await vresp.json().catch(() => ({}));
+            throw new Error(err.error || `Verification server error (${vresp.status})`);
+        }
+
+        const vdata = await vresp.json();
+        if (!vdata.success) {
+            throw new Error(vdata.error || 'Verification failed on the server.');
+        }
+
+        // Stale-guard: if the user started a new correction job while this
+        // verification was in flight, its verdicts belong to the OLD job —
+        // merging them into the new segments would corrupt the review card.
+        if (corrJobId !== jobId) return;
+
+        // Merge verdicts 1:1 by array index. The /api/correct-verify report
+        // segments use the same ordering contract as the preview segments
+        // (paragraphs first, then table cells), so no key matching needed.
+        const vsegs = vdata.segments || [];
+        corrSegments.forEach(function(seg, i) {
+            if (vsegs[i]) {
+                if (vsegs[i].verdict) seg.verdict = vsegs[i].verdict;
+                if (vsegs[i].note !== undefined) seg.note = vsegs[i].note;
+            }
+        });
+
+        const failCount = vdata.fail_count || 0;
+        const reviewCount = vdata.review_count || 0;
+        setCPhase('verify', 'done',
+            (vdata.score != null ? `Score: ${vdata.score}/100 · ` : '') +
+            failCount + ' fail · ' + reviewCount + ' review');
+
+        corrVerifyState = vdata.verify_degraded ? 'degraded' : 'done';
+        corrProgress.classList.remove('visible');
+
+        if (vdata.verify_degraded) {
+            setVerifyWarning('⚠️ Verification was partial — the AI model is overloaded. Please review every segment marked REVIEW/FAIL below, and double-check anything left UNVERIFIED.');
+        }
+
+        // Re-render badges + summary now that verdicts are in — but only if
+        // the user is still looking at the review card (they may have already
+        // clicked "Build Document", which hides it).
+        if (document.getElementById('corr-review-card').classList.contains('visible')) {
+            showCorrectionReview();
+        }
+
+    } catch(e) {
+        // Verification is non-blocking: keep the review card usable and let
+        // the user fall back to manual review. (Stale-guard: a leftover
+        // failure from a previous job must not clobber the current one.)
+        if (corrJobId !== jobId) return;
+        setCPhase('verify', 'done', 'Failed');
+        corrVerifyState = 'failed';
+        corrProgress.classList.remove('visible');
+        if (document.getElementById('corr-review-card').classList.contains('visible')) {
+            showCorrectionReview();
+        }
+        setVerifyWarning('⚠️ Verification failed: ' + e.message + ' Please review every segment below manually.');
+    }
+}
+
+function setVerifyWarning(text) {
+    const el = document.getElementById('corr-verify-warning');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('visible', !!text);
+}
+
+function showCorrectionReview() {
     var segContainer = document.getElementById('corr-segments');
     var note = document.getElementById('corr-review-note');
 
-    // Only show segments where the text actually changed
+    // Tally verdicts across ALL segments (hidden unchanged ones included).
+    var pendingCount = 0, failCount = 0, reviewCount = 0, passCount = 0;
+    corrSegments.forEach(function(seg) {
+        if (!seg.verdict) pendingCount++;
+        else if (seg.verdict === 'FAIL') failCount++;
+        else if (seg.verdict === 'REVIEW') reviewCount++;
+        else if (seg.verdict === 'PASS') passCount++;
+    });
+
+    // Only show segments where the text actually changed. Unverified
+    // segments sort after PASS so they don't jump around as badges arrive.
     var order = { 'FAIL': 0, 'REVIEW': 1, 'PASS': 2 };
     var visible = corrSegments.map(function(seg, i) {
         return { seg: seg, origIdx: i };
@@ -1510,12 +1626,17 @@ function showCorrectionReview(score, status, data) {
         div.className = 'corr-segment' + (seg.verdict === 'PASS' ? ' seg-pass' : '');
         div.dataset.segIdx = origIdx;
 
-        var vCls = seg.verdict === 'PASS' ? 'verify-pass' : (seg.verdict === 'REVIEW' ? 'verify-review' : 'verify-fail');
+        var vCls, vLabel;
+        if (seg.verdict === 'PASS') { vCls = 'verify-pass'; vLabel = 'PASS'; }
+        else if (seg.verdict === 'REVIEW') { vCls = 'verify-review'; vLabel = 'REVIEW'; }
+        else if (seg.verdict === 'FAIL') { vCls = 'verify-fail'; vLabel = 'FAIL'; }
+        else if (corrVerifyState === 'pending') { vCls = 'verify-pending'; vLabel = 'VERIFYING…'; }
+        else { vCls = 'verify-pending'; vLabel = 'UNVERIFIED'; }
         var nCls = seg.verdict === 'FAIL' ? 'seg-note-note-fail' : 'seg-note-note-review';
 
         var html = '<div class="seg-header">';
         html += '<span class="seg-location">' + escapeHtml(seg.location) + '</span>';
-        html += '<span class="seg-verdict ' + vCls + '">' + escapeHtml(seg.verdict) + '</span>';
+        html += '<span class="seg-verdict ' + vCls + '">' + vLabel + '</span>';
         html += '</div>';
         html += '<div class="seg-chinese">' + escapeHtml(seg.chinese) + '</div>';
         if (seg.original_english) {
@@ -1531,12 +1652,15 @@ function showCorrectionReview(score, status, data) {
     }
 
     var noteText = '';
-    if (data.verify_degraded) {
-        noteText = '\u26A0\uFE0F Verification was skipped — the AI model is overloaded. Please review every segment below manually. ';
+    if (pendingCount > 0 && corrVerifyState === 'pending') {
+        noteText = '\u23F3 Verification is running in the background — badges and issue notes will appear here automatically. ';
     }
     noteText += visible.length + ' segment(s) with changes';
     if (unchangedCount > 0) {
         noteText += ' \u00b7 ' + unchangedCount + ' unchanged (hidden)';
+    }
+    if (failCount > 0 || reviewCount > 0) {
+        noteText += ' \u00b7 ' + reviewCount + ' review \u00b7 ' + failCount + ' fail';
     }
     noteText += '. Edit any segment above, then click "Build Document".';
     note.textContent = noteText;
@@ -1668,6 +1792,9 @@ function resetCorrection() {
     corrCorrections = null;
     corrSegments = [];
     corrBaseName = '';
+    corrJobId = null;
+    corrVerifyState = 'pending';
+    setVerifyWarning('');
     corrFileInput.value = '';
     corrUploadArea.classList.remove('hidden');
     corrFileCard.classList.remove('visible');
