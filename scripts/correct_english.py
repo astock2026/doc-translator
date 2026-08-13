@@ -38,7 +38,8 @@ from urllib.error import URLError, HTTPError
 
 # ── Config ─────────────────────────────────────────────────────────────
 
-BATCH_SIZE = 10          # pairs per API call (correction phase)
+BATCH_SIZE = 20          # pairs per API call (correction phase); TruncationError
+                         # split-and-retry handles any batch that overflows the token cap
 VERIFY_BATCH_SIZE = 15   # pairs per API call (verification phase — bigger batches cut
                          # round trips, which matters because the whole request must
                          # finish inside the gunicorn worker timeout)

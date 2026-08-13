@@ -153,6 +153,73 @@ def run_script(script_name, *args, timeout=120):
     return result.stdout
 
 
+def _sweep_old_jobs(age_seconds=12 * 3600):
+    """Delete orphaned per-job upload dirs older than `age_seconds`.
+
+    Since /api/correct and /api/correct-verify are now two separate requests,
+    a job dir must survive between them. If the user abandons a job (never
+    verifies), the dir would leak — this sweep reclaims it. Directories are
+    named as random 8-hex ids, so only our job dirs live in UPLOAD_FOLDER.
+    """
+    try:
+        now = time.time()
+        for d in Path(app.config["UPLOAD_FOLDER"]).iterdir():
+            if not d.is_dir():
+                continue
+            try:
+                if now - d.stat().st_mtime > age_seconds:
+                    shutil.rmtree(str(d), ignore_errors=True)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
+def _preview_segments(corrections):
+    """Flatten corrections.json into review-card segments with NO verdicts.
+
+    Must mirror correct_english.py's _flatten_corrections ordering (paragraphs
+    first, then tables) so that the /api/correct-verify report segments can be
+    merged into these 1:1 by array index on the client.
+    """
+    items = []
+    for p in corrections.get("paragraphs", []):
+        chn = (p.get("text") or "").strip()
+        eng = (p.get("translation") or "").strip()
+        orig = (p.get("original_en") or "").strip()
+        if chn and eng and not eng.startswith("[CORRECTION ERROR"):
+            items.append({
+                "location": f"Paragraph {p.get('index', '?')}",
+                "chinese": chn,
+                "corrected_english": eng,
+                "original_english": orig,
+                "kind": "paragraph",
+                "index": p.get("index"),
+                "changed": bool(orig) and " ".join(orig.split()) != " ".join(eng.split()),
+            })
+    for t in corrections.get("tables", []):
+        ti = t.get("index", -1)
+        for r in t.get("rows", []):
+            ri = r.get("index", -1)
+            for c in r.get("cells", []):
+                chn = (c.get("text") or "").strip()
+                eng = (c.get("translation") or "").strip()
+                orig = (c.get("original_en") or "").strip()
+                if chn and eng and not eng.startswith("[CORRECTION ERROR"):
+                    items.append({
+                        "location": f"Table {ti} · Row {ri} · Cell {c.get('cell_index', '?')}",
+                        "chinese": chn,
+                        "corrected_english": eng,
+                        "original_english": orig,
+                        "kind": "cell",
+                        "ti": ti, "ri": ri,
+                        "ci": c.get("cell_index"),
+                        "pi": c.get("para_index"),
+                        "changed": bool(orig) and " ".join(orig.split()) != " ".join(eng.split()),
+                    })
+    return items
+
+
 # ═══════════════════════════════════════════════════════════════════════
 #  Email & Auth Helpers
 # ═══════════════════════════════════════════════════════════════════════
@@ -825,12 +892,14 @@ def translate():
 @authorized_required
 def correct():
     """Upload a bilingual .docx → correct the existing English as a CMC,
-    Regulatory & Quality expert (FDA/EMA/ICH terminology) → verify the
-    corrected English against the Chinese above → return JSON with
-    per-segment verdicts and the corrections data for client-side editing.
+    Regulatory & Quality expert (FDA/EMA/ICH terminology) → return JSON with
+    the corrections and a job_id.
 
-    The client shows problematic segments for user review/editing, then calls
-    /api/correct-apply to build and download the final .docx."""
+    Verification now runs as a SEPARATE request (/api/correct-verify) so each
+    request stays well under the gunicorn worker timeout even when Gemini is
+    slow. The corrections + content.json stay on disk under UPLOAD_FOLDER/<job_id>
+    until the client calls /api/correct-verify (which cleans up) or the orphan
+    sweep reclaims them."""
     if not LLM_AVAILABLE:
         return jsonify({
             "error": "LLM not configured. Set LLM_API_KEY environment variable.\n"
@@ -844,9 +913,11 @@ def correct():
     if not file.filename or not file.filename.lower().endswith(".docx"):
         return jsonify({"error": "Only .docx files are supported"}), 400
 
+    _sweep_old_jobs()
     job_id = uuid.uuid4().hex[:8]
     work_dir = Path(app.config["UPLOAD_FOLDER"]) / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
+    keep_workdir = False  # set True on success so /api/correct-verify can reuse it
 
     try:
         base_name = secure_filename(file.filename).rsplit(".", 1)[0]
@@ -854,7 +925,7 @@ def correct():
         file.save(str(input_path))
 
         # Phase 1: Extract
-        logger.info("[Correct Phase 1/3] Extracting content...")
+        logger.info("[Correct Phase 1/2] Extracting content...")
         content_path = work_dir / "content.json"
         run_script("extract_paragraphs.py", str(input_path), "--output", str(content_path))
 
@@ -869,7 +940,7 @@ def correct():
         )
 
         # Phase 2: Correct English via LLM (CMC/Regulatory/Quality expert)
-        logger.info("[Correct Phase 2/3] Correcting English via LLM...")
+        logger.info("[Correct Phase 2/2] Correcting English via LLM...")
         corr_path = work_dir / "corrections.json"
         run_script(
             "correct_english.py", str(content_path), "--output", str(corr_path),
@@ -895,16 +966,78 @@ def correct():
                          "feature above to create a bilingual document first."
             }), 422
 
-        # Phase 3: Verify — LLM accuracy check vs Chinese + CMC glossary check.
+        # Preview segments (no verdicts yet — the client renders the review
+        # card immediately, then /api/correct-verify paints the labels).
+        segments = _preview_segments(corrections)
+        keep_workdir = True
+
+        return jsonify({
+            "success": True,
+            "job_id": job_id,
+            "base_name": base_name,
+            "segments": segments,
+            "corrections": corrections,
+            "stats": {
+                "corrected": corrected_count,
+                "paragraphs": para_count,
+                "table_cells": cell_count,
+            },
+        })
+
+    except Exception as e:
+        logger.exception("Correction pipeline failed")
+        resp = jsonify({
+            "error": "The model is experiencing high demand. "
+                     "Spikes in demand are usually temporary. "
+                     "Please try again later."
+        })
+        resp.status_code = 503
+        resp.headers["X-Error-Detail"] = _safe_error_detail(e)
+        return resp
+    finally:
+        # Keep the job dir only when the correction succeeded; the client is
+        # expected to call /api/correct-verify with this job_id afterwards.
+        if not keep_workdir:
+            shutil.rmtree(str(work_dir), ignore_errors=True)
+
+
+@app.route("/api/correct-verify", methods=["POST"])
+@authorized_required
+def correct_verify():
+    """Verify previously-corrected English against the Chinese source.
+
+    Receives JSON: {"job_id": "..."} — the id returned by /api/correct.
+    Runs the LLM verification pass (with a hard --verify-timeout that degrades
+    remaining segments to REVIEW instead of failing) plus the fast CMC glossary
+    check, then returns the verdict report. Cleans up the job dir on success;
+    on failure the dir is kept so the client can retry with the same job_id."""
+    body = request.get_json(silent=True) or {}
+    job_id = (body.get("job_id") or "").strip()
+    if not job_id:
+        return jsonify({"error": "Missing job_id"}), 400
+
+    work_dir = Path(app.config["UPLOAD_FOLDER"]) / job_id
+    corr_path = work_dir / "corrections.json"
+    content_path = work_dir / "content.json"
+    if not corr_path.exists():
+        return jsonify({
+            "error": "Correction job not found or expired. "
+                     "Please re-run the correction."
+        }), 404
+
+    keep_workdir = True  # delete only on success so the client can retry
+
+    try:
+        # Phase: Verify — LLM accuracy check vs Chinese + CMC glossary check.
         # The verify pass gets a hard time budget (--verify-timeout) so that
         # even when Gemini is slow, the request finishes inside the gunicorn
-        # worker timeout (1200s) instead of the worker being killed. Unverified
+        # worker timeout instead of the worker being killed. Unverified
         # segments degrade to REVIEW markers for manual review.
-        logger.info(f"[Correct Phase 3/3] Verifying {corrected_count} corrections against Chinese...")
+        logger.info("[Correct Phase 3/3] Verifying corrections against Chinese...")
         report_path = work_dir / "report.json"
         run_script(
             "correct_english.py", str(corr_path), "--verify", "--output", str(report_path),
-            "--verify-timeout", "420",  # 7 min LLM budget; correction already had 600s
+            "--verify-timeout", "420",  # 7 min LLM budget
             timeout=600,  # subprocess cap — must be > verify-timeout + margin
         )
         with open(report_path, "r", encoding="utf-8") as f:
@@ -925,10 +1058,9 @@ def correct():
             logger.warning(f"CMC glossary check failed (non-fatal): {e}")
 
         logger.info(f"Correction verified: score={report.get('score')}, status={report.get('status')}")
-
+        keep_workdir = False
         return jsonify({
             "success": True,
-            "base_name": base_name,
             "score": report.get("score", 0),
             "status": report.get("status", "REVIEW"),
             "summary": report.get("summary", ""),
@@ -938,16 +1070,10 @@ def correct():
             "fail_count": report.get("warnings", 0),
             "review_count": report.get("info", 0),
             "segments": report.get("segments", []),
-            "corrections": corrections,
-            "stats": {
-                "corrected": corrected_count,
-                "paragraphs": para_count,
-                "table_cells": cell_count,
-            },
         })
 
     except Exception as e:
-        logger.exception("Correction pipeline failed")
+        logger.exception("Correction verification failed")
         resp = jsonify({
             "error": "The model is experiencing high demand. "
                      "Spikes in demand are usually temporary. "
@@ -957,7 +1083,8 @@ def correct():
         resp.headers["X-Error-Detail"] = _safe_error_detail(e)
         return resp
     finally:
-        shutil.rmtree(str(work_dir), ignore_errors=True)
+        if not keep_workdir:
+            shutil.rmtree(str(work_dir), ignore_errors=True)
 
 
 @app.route("/api/correct-apply", methods=["POST"])
