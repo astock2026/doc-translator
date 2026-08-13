@@ -40,7 +40,7 @@ from urllib.error import URLError, HTTPError
 
 BATCH_SIZE = 10          # pairs per API call
 MIN_DELAY = 1.0          # seconds between batches
-MAX_RETRIES = 4          # retries on transient errors (503 high-demand, 429 rate-limit)
+MAX_RETRIES = 5          # retries on transient errors (503 high-demand, 429 rate-limit, timeouts)
 
 
 # ── CMC / Regulatory / Quality correction prompt ───────────────────────
@@ -182,6 +182,14 @@ def _call_openai_batch(pairs, api_base, api_key, model, system_prompt, user_intr
                 time.sleep(2 ** (attempt + 1))
                 continue
             raise RuntimeError(f"LLM API connection error: {e.reason}")
+        except TimeoutError as e:
+            # Read timeout on urlopen() is NOT wrapped in URLError on
+            # Python 3.14 — it propagates raw and previously killed the
+            # whole pipeline without a single retry.
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise RuntimeError(f"LLM API timeout after {MAX_RETRIES} attempts: {e}")
 
 
 # ── Provider: Google Gemini batch call ─────────────────────────────────
@@ -222,6 +230,12 @@ def _call_gemini_batch(pairs, api_key, model, system_prompt, user_intro):
                 time.sleep(2 ** (attempt + 1))
                 continue
             raise RuntimeError(f"Gemini API connection error: {e.reason}")
+        except TimeoutError as e:
+            # See note in _call_openai_batch: raw TimeoutError, not URLError.
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            raise RuntimeError(f"Gemini API timeout after {MAX_RETRIES} attempts: {e}")
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"Unexpected Gemini response structure: {e}")
 
@@ -589,6 +603,7 @@ def verify_corrections(corrections_path, output_path=None,
 
     pairs = [(item["chinese"], item["english"]) for item in items]
     verdicts, notes = {}, {}
+    degraded = False
     for batch_start in range(0, total, BATCH_SIZE):
         batch_end = min(batch_start + BATCH_SIZE, total)
         try:
@@ -606,7 +621,18 @@ def verify_corrections(corrections_path, output_path=None,
                 verdicts[batch_start + local_i] = batch_verdicts[local_i]
                 notes[batch_start + local_i] = batch_notes[local_i]
         except Exception as e:
-            raise RuntimeError(f"LLM verification failed: {e}") from e
+            # Model overloaded (503) or timed out after all retries: don't
+            # kill the whole pipeline. Degrade this batch to manual review so
+            # the user can still review + build the document. The report is
+            # flagged verify_degraded so the UI can explain why verdicts are
+            # generic.
+            degraded = True
+            print(f"[WARN] Verification batch {batch_start}-{batch_end} failed after "
+                  f"{MAX_RETRIES} attempts: {e} — marking segments for manual review.",
+                  file=sys.stderr)
+            for i in range(batch_start, batch_end):
+                verdicts[i] = "REVIEW"
+                notes[i] = "Verification unavailable (AI model overloaded) — please review manually."
         if batch_end < total:
             time.sleep(MIN_DELAY)
 
@@ -659,7 +685,17 @@ def verify_corrections(corrections_path, output_path=None,
     score = max(0, min(100, 100 - reviews * 10 - fails * 25))
     status = "PASS" if score >= 80 else ("REVIEW" if score >= 60 else "FAIL")
 
-    if score >= 90:
+    if degraded:
+        # Verification could not run to completion — the per-batch verdicts
+        # are generic "please review" markers, so a numeric score would be
+        # misleading. Force REVIEW and explain in the summary.
+        score = None
+        status = "REVIEW"
+        summary = ("Verification could not be completed — the AI model is "
+                   "experiencing high demand (503). All changed segments are "
+                   "listed below for manual review; please check them yourself "
+                   "before building the document.")
+    elif score >= 90:
         summary = (f"Excellent — {score}/100. The corrected English is accurate, "
                    "natural, and aligned with FDA/EMA/ICH terminology.")
     elif score >= 80:
@@ -682,6 +718,7 @@ def verify_corrections(corrections_path, output_path=None,
         "issues": issues,
         "segments": segments,
         "summary": summary,
+        "verify_degraded": degraded,
         "by_category": {},
     }
 

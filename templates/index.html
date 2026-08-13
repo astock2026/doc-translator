@@ -1453,7 +1453,7 @@ async function startCorrection() {
         const corrected = (data.stats && data.stats.corrected) || '?';
 
         setCPhase('correct', 'done', `${corrected} segment(s) corrected`);
-        setCPhase('verify', 'done', 'Verified');
+        setCPhase('verify', 'done', data.verify_degraded ? 'Skipped (model busy)' : 'Verified');
 
         // Store for the review + apply phase
         corrCorrections = data.corrections;
@@ -1518,7 +1518,11 @@ function showCorrectionReview(score, status, data) {
     });
     }
 
-    var noteText = visible.length + ' segment(s) with changes';
+    var noteText = '';
+    if (data.verify_degraded) {
+        noteText = '\u26A0\uFE0F Verification was skipped — the AI model is overloaded. Please review every segment below manually. ';
+    }
+    noteText += visible.length + ' segment(s) with changes';
     if (unchangedCount > 0) {
         noteText += ' \u00b7 ' + unchangedCount + ' unchanged (hidden)';
     }
