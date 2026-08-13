@@ -1038,6 +1038,43 @@ function setPhase(id, state, statText) {
     if (statText) stat.textContent = statText;
 }
 
+// ── Network resilience helpers ─────────────────────────────────────────
+// Render's free tier sleeps after ~15 min of inactivity. The first request
+// after that triggers a cold start, and the connection is sometimes dropped
+// before the app finishes booting — the browser then reports "Failed to
+// fetch" even though the request never reached the app. warmUpServer()
+// wakes the service on a tiny public endpoint, and fetchWithRetry()
+// re-sends the request a couple of times on pure network failures so these
+// transient drops self-heal. Retry is ONLY used on non-charging endpoints
+// (extract/translate/correct); charging endpoints just warm up first.
+
+async function warmUpServer() {
+    try {
+        await fetch('/api/status', { method: 'GET' });
+    } catch (e) { /* ignore — the real call retries */ }
+}
+
+async function fetchWithRetry(url, opts, retries, retryDelay) {
+    retries = retries || 2;
+    retryDelay = retryDelay || 4000;
+    for (let attempt = 0; ; attempt++) {
+        try {
+            return await fetch(url, opts);
+        } catch (e) {
+            if (attempt >= retries) {
+                const friendly = new Error(
+                    'Could not reach the server (network error). If this is the ' +
+                    'first request after a pause, the service may still be starting ' +
+                    'up — please try again in about a minute.'
+                );
+                friendly.cause = e;
+                throw friendly;
+            }
+            await new Promise(r => setTimeout(r, retryDelay));
+        }
+    }
+}
+
 async function startTranslation() {
     if (!currentFile) return;
 
@@ -1064,7 +1101,7 @@ async function startTranslation() {
         try {
             const extractFd = new FormData();
             extractFd.append('file', currentFile);
-            const extractResp = await fetch('/api/extract', { method: 'POST', body: extractFd });
+            const extractResp = await fetchWithRetry('/api/extract', { method: 'POST', body: extractFd }, 1, 3000);
             if (extractResp.ok) {
                 const ed = await extractResp.json();
                 statsP = ed.stats;
@@ -1081,7 +1118,10 @@ async function startTranslation() {
         const transFd = new FormData();
         transFd.append('file', currentFile);
 
-        const resp = await fetch('/api/translate', { method: 'POST', body: transFd });
+        // Wake the service first so the long LLM request doesn't get dropped
+        // during a Render free-tier cold start.
+        await warmUpServer();
+        const resp = await fetchWithRetry('/api/translate', { method: 'POST', body: transFd }, 2, 5000);
 
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -1225,6 +1265,9 @@ async function runInsert(translationsData) {
             new Blob([JSON.stringify(translationsData)], { type: 'application/json' }),
             'translations.json');
 
+        // Charging endpoint: warm up the service but do NOT auto-retry
+        // (a retry after a dropped response could charge twice).
+        await warmUpServer();
         const resp = await fetch('/api/insert', { method: 'POST', body: fd });
 
         if (!resp.ok) {
@@ -1376,7 +1419,7 @@ async function startCorrection() {
         try {
             const extractFd = new FormData();
             extractFd.append('file', corrFile);
-            const extractResp = await fetch('/api/extract', { method: 'POST', body: extractFd });
+            const extractResp = await fetchWithRetry('/api/extract', { method: 'POST', body: extractFd }, 1, 3000);
             if (extractResp.ok) {
                 const ed = await extractResp.json();
                 statsP = ed.stats;
@@ -1390,7 +1433,10 @@ async function startCorrection() {
         const fd = new FormData();
         fd.append('file', corrFile);
 
-        const resp = await fetch('/api/correct', { method: 'POST', body: fd });
+        // Wake the service first so the long LLM request doesn't get dropped
+        // during a Render free-tier cold start.
+        await warmUpServer();
+        const resp = await fetchWithRetry('/api/correct', { method: 'POST', body: fd }, 2, 5000);
 
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
@@ -1555,6 +1601,9 @@ async function buildCorrectedDoc(editedCorrections) {
             new Blob([JSON.stringify(editedCorrections)], { type: 'application/json' }),
             'corrections.json');
 
+        // Charging endpoint: warm up the service but do NOT auto-retry
+        // (a retry after a dropped response could charge twice).
+        await warmUpServer();
         var resp = await fetch('/api/correct-apply', { method: 'POST', body: fd });
 
         if (!resp.ok) {
