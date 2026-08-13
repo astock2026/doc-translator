@@ -3,7 +3,7 @@ services:
     name: doc-translator
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 600
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 1200
     plan: free
     rootDir: .
     envVars:
