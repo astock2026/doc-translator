@@ -927,6 +927,7 @@ def correct():
             "score": report.get("score", 0),
             "status": report.get("status", "REVIEW"),
             "summary": report.get("summary", ""),
+            "verify_degraded": report.get("verify_degraded", False),
             "cmc_score": cmc_score,
             "total_segments": report.get("total_checked", 0),
             "fail_count": report.get("warnings", 0),
