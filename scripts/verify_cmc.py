@@ -6,6 +6,14 @@ Scans translations.json against a CMC/GMP glossary, checking that:
 2. Terminology is consistent across the entire document
 3. No ambiguous or non-domain translations are used for regulated terms
 
+IMPORTANT: The glossary below is a deliberately small MINIMUM subset of the
+most common regulated terms — it is a SAFETY NET, not an exhaustive audit.
+Full CMC/QC/QA/RA/quality terminology coverage lives in the LLM system
+prompts (translate_llm.py, correct_english.py), where the model applies its
+domain expertise to all terms not listed here. The score from this script
+reflects only the terms in the glossary and must not be presented as a
+comprehensive terminology grade.
+
 Produces a verification report with compliance score and flagged issues.
 
 Usage:
@@ -18,8 +26,11 @@ from collections import defaultdict
 
 
 # ── CMC/GMP Terminology Glossary ────────────────────────────────────────
-# Maps Chinese terms to their approved English equivalents.
-# If a translation uses a non-approved variant, it will be flagged.
+# Minimum mandatory subset of Chinese terms mapped to their approved
+# English equivalents. Deliberately small and NOT exhaustive — the LLM
+# system prompts carry full CMC/QC/QA/RA domain expertise for all other
+# terms. If a translation uses a non-approved variant of a term listed
+# here, it will be flagged.
 
 GLOSSARY = {
     # Process & Procedures

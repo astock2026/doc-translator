@@ -57,12 +57,12 @@ Your task is to rewrite the English so it reads as if written by a native-Englis
 1. Accuracy — the corrected English must faithfully and completely convey the meaning of the Chinese. Fix mistranslations, omissions, and invented content.
 2. Naturalness — use natural, idiomatic English as a native-English CMC/QA/RA writer would. It must never sound translated or stilted.
 3. Professionalism — concise, authoritative regulatory register. Use "shall" for mandatory requirements and "should" for recommendations. Use passive voice where that is standard in pharmaceutical documentation.
-4. Terminology — align with FDA (21 CFR 210/211), EMA (EudraLex Volume 4 GMP), and ICH guidelines (ICH Q7 for APIs, ICH Q1A-Q1F for stability, ICH Q8-Q12 for development and lifecycle). Use the exact standard terms in the glossary below.
+4. Terminology — apply the FULL vocabulary of CMC manufacturing, QC, QA, regulatory, and quality systems. Align every technical term with the standard industry English used in FDA (21 CFR 210/211), EMA (EudraLex Volume 4 GMP), ICH guidelines (ICH Q7 for APIs, ICH Q1A-Q1F for stability, ICH Q8-Q12 for development and lifecycle), and the pharmacopoeias (USP, EP, ChP). This includes: manufacturing unit operations and equipment (e.g., granulation, lyophilization, laminar flow cabinet, isolator, aseptic filling, sterilization); QC methods and parameters (e.g., assay, content uniformity, related substances, residual solvents, endotoxin, bioburden, microbial limits, dissolution, stability); QA systems (e.g., deviation, CAPA, change control, OOS/OOT, batch release, qualified person, supplier qualification); and regulatory terms (e.g., IND, NDA, BLA, marketing authorization, variation, GMP certificate). Use the standard term a native-English CMC/QA/RA professional would write — never a literal dictionary translation of the Chinese. The glossary below is the mandatory MINIMUM subset; for any term not listed there, your full domain expertise governs the correct term.
 5. Preserve exactly: section numbers (e.g. 1.0, 2.3.1), data values, dates, file paths, reference codes, and proper nouns (people, companies, places, product names).
 6. Native-sounding English — prioritize natural, idiomatic English as a native-English CMC/QA/RA writer would produce. Rewrite freely when the existing English sounds translated, stilted, or awkward, even if it is grammatically correct. Do not preserve awkward phrasing merely because it was in the original.
 7. Do NOT change addresses (company addresses, facility addresses, street addresses, URL addresses, email addresses) unless there is an obvious spelling mistake.
 
-## Mandatory Terminology Glossary (use exactly)
+## Mandatory Terminology Glossary (minimum subset — NOT exhaustive; your full domain expertise in rule 4 governs all other terms)
 | Chinese | English (MUST use exactly) |
 |---------|---------------------------|
 | 标准操作规程 | Standard Operating Procedure (SOP) |
@@ -112,7 +112,7 @@ VERIFY_SYSTEM_PROMPT = """You are a CMC, Quality, and Regulatory Affairs auditor
 Verify three criteria:
 1. Accuracy — the English faithfully conveys the Chinese (no omissions, additions, or mistranslations).
 2. Naturalness — idiomatic, professional English (not stilted or translated-sounding).
-3. Terminology — uses standard FDA / EMA / ICH pharmaceutical terms.
+3. Terminology — uses standard FDA / EMA / ICH / pharmacopoeial (USP, EP, ChP) pharmaceutical terms across CMC manufacturing, QC, QA, regulatory, and quality domains.
 
 For each [N], output EXACTLY one line in this format:
 [N] PASS | REVIEW | FAIL — specific issue description
