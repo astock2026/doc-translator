@@ -895,12 +895,17 @@ def correct():
                          "feature above to create a bilingual document first."
             }), 422
 
-        # Phase 3: Verify — LLM accuracy check vs Chinese + CMC glossary check
+        # Phase 3: Verify — LLM accuracy check vs Chinese + CMC glossary check.
+        # The verify pass gets a hard time budget (--verify-timeout) so that
+        # even when Gemini is slow, the request finishes inside the gunicorn
+        # worker timeout (1200s) instead of the worker being killed. Unverified
+        # segments degrade to REVIEW markers for manual review.
         logger.info(f"[Correct Phase 3/3] Verifying {corrected_count} corrections against Chinese...")
         report_path = work_dir / "report.json"
         run_script(
             "correct_english.py", str(corr_path), "--verify", "--output", str(report_path),
-            timeout=600,  # 10 min for LLM verification pass
+            "--verify-timeout", "420",  # 7 min LLM budget; correction already had 600s
+            timeout=600,  # subprocess cap — must be > verify-timeout + margin
         )
         with open(report_path, "r", encoding="utf-8") as f:
             report = json.load(f)

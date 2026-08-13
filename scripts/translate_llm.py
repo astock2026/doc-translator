@@ -37,7 +37,7 @@ except ImportError:
 
 BATCH_SIZE = 10          # texts per API call
 MIN_DELAY = 1.0          # seconds between batches
-MAX_RETRIES = 2          # retries on transient errors
+MAX_RETRIES = 5          # retries on transient errors (503 high-demand, 429 rate-limit, timeouts)
 
 
 # ── CMC/GMP System Prompt ──────────────────────────────────────────────
@@ -210,6 +210,17 @@ def _call_openai_batch(texts, api_base, api_key, model):
                 time.sleep(wait)
                 continue
             raise RuntimeError(f"LLM API connection error: {e.reason}")
+        except TimeoutError:
+            # Python 3.14 surfaces read timeouts as raw TimeoutError, NOT
+            # wrapped in URLError — this handler must exist or a slow model
+            # response kills the whole translation.
+            if attempt < MAX_RETRIES - 1:
+                wait = 2 ** (attempt + 1)
+                sys.stdout.write(f"\r  Read timed out, retrying in {wait}s...")
+                sys.stdout.flush()
+                time.sleep(wait)
+                continue
+            raise RuntimeError("LLM API read timed out")
 
 
 # ── Provider: Google Gemini batch call ─────────────────────────────────
@@ -269,6 +280,17 @@ def _call_gemini_batch(texts, api_key, model):
                 time.sleep(wait)
                 continue
             raise RuntimeError(f"Gemini API connection error: {e.reason}")
+        except TimeoutError:
+            # Python 3.14 surfaces read timeouts as raw TimeoutError, NOT
+            # wrapped in URLError — this handler must exist or a slow model
+            # response kills the whole translation.
+            if attempt < MAX_RETRIES - 1:
+                wait = 2 ** (attempt + 1)
+                sys.stdout.write(f"\r  Read timed out, retrying in {wait}s...")
+                sys.stdout.flush()
+                time.sleep(wait)
+                continue
+            raise RuntimeError("Gemini API read timed out")
         except (KeyError, IndexError) as e:
             raise RuntimeError(f"Unexpected Gemini response structure: {e}")
 
