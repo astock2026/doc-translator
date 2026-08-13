@@ -50,6 +50,8 @@ def _safe_error_detail(exc):
     detail = str(exc)
     # Never let an API key leak out (Gemini URLs carry ?key=...)
     detail = re.sub(r"key=[^&\s\"']+", "key=REDACTED", detail)
+    # Werkzeug rejects newlines in header values — collapse to single line
+    detail = " ".join(detail.split())
     return detail[:300]
 
 app = Flask(__name__)

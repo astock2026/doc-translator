@@ -40,7 +40,7 @@ from urllib.error import URLError, HTTPError
 
 BATCH_SIZE = 10          # pairs per API call
 MIN_DELAY = 1.0          # seconds between batches
-MAX_RETRIES = 2          # retries on transient errors
+MAX_RETRIES = 4          # retries on transient errors (503 high-demand, 429 rate-limit)
 
 
 # ── CMC / Regulatory / Quality correction prompt ───────────────────────
