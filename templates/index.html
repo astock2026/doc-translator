@@ -1058,8 +1058,9 @@ async function fetchWithRetry(url, opts, retries, retryDelay) {
     retries = retries || 2;
     retryDelay = retryDelay || 4000;
     for (let attempt = 0; ; attempt++) {
+        let resp;
         try {
-            return await fetch(url, opts);
+            resp = await fetch(url, opts);
         } catch (e) {
             if (attempt >= retries) {
                 const friendly = new Error(
@@ -1071,7 +1072,18 @@ async function fetchWithRetry(url, opts, retries, retryDelay) {
                 throw friendly;
             }
             await new Promise(r => setTimeout(r, retryDelay));
+            continue;
         }
+        // Gemini returns 503 ("high demand") / 429 (rate limit) when overloaded.
+        // The server already retried with backoff; if it still failed, one more
+        // client-side retry is safe here because callers only use this helper for
+        // NON-charging endpoints (extract/translate/correct).
+        if ((resp.status === 503 || resp.status === 429) && attempt < retries) {
+            console.warn(`[fetchWithRetry] HTTP ${resp.status} — retrying (${attempt + 1}/${retries})`);
+            await new Promise(r => setTimeout(r, retryDelay * (attempt + 1)));
+            continue;
+        }
+        return resp;
     }
 }
 

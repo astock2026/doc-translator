@@ -38,7 +38,10 @@ from urllib.error import URLError, HTTPError
 
 # ── Config ─────────────────────────────────────────────────────────────
 
-BATCH_SIZE = 10          # pairs per API call
+BATCH_SIZE = 10          # pairs per API call (correction phase)
+VERIFY_BATCH_SIZE = 15   # pairs per API call (verification phase — bigger batches cut
+                         # round trips, which matters because the whole request must
+                         # finish inside the gunicorn worker timeout)
 MIN_DELAY = 1.0          # seconds between batches
 MAX_RETRIES = 5          # retries on transient errors (503 high-demand, 429 rate-limit, timeouts)
 
@@ -580,9 +583,16 @@ def _parse_verdicts(raw, expected_count):
     return verdicts, notes
 
 
-def verify_corrections(corrections_path, output_path=None,
+def verify_corrections(corrections_path, output_path=None, verify_timeout=None,
                        api_base=None, api_key=None, model=None, provider=None):
-    """LLM-based verification of corrected English against Chinese sources."""
+    """LLM-based verification of corrected English against Chinese sources.
+
+    verify_timeout: hard time budget in seconds for the whole LLM pass. If the
+    budget runs out mid-pass, remaining segments are marked REVIEW with an
+    explanatory note and the report is flagged verify_degraded — this keeps the
+    /api/correct request inside the gunicorn worker timeout instead of letting
+    the worker get killed (which turns a completed correction into a 500).
+    """
     with open(corrections_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -604,8 +614,21 @@ def verify_corrections(corrections_path, output_path=None,
     pairs = [(item["chinese"], item["english"]) for item in items]
     verdicts, notes = {}, {}
     degraded = False
-    for batch_start in range(0, total, BATCH_SIZE):
-        batch_end = min(batch_start + BATCH_SIZE, total)
+    verify_start = time.time()
+    for batch_start in range(0, total, VERIFY_BATCH_SIZE):
+        batch_end = min(batch_start + VERIFY_BATCH_SIZE, total)
+        if verify_timeout is not None and time.time() - verify_start > verify_timeout:
+            # Time budget exhausted — don't let the request blow the gunicorn
+            # worker timeout. Mark the rest for manual review and finish.
+            degraded = True
+            note = "Verification skipped (time limit reached) — please review manually."
+            for i in range(batch_start, total):
+                verdicts[i] = "REVIEW"
+                notes[i] = note
+            print(f"[WARN] Verification time limit ({verify_timeout}s) reached — "
+                  f"marking remaining {total - batch_start} segment(s) for manual review.",
+                  file=sys.stderr)
+            break
         try:
             res = call_llm(
                 pairs[batch_start:batch_end], VERIFY_SYSTEM_PROMPT,
@@ -691,10 +714,10 @@ def verify_corrections(corrections_path, output_path=None,
         # misleading. Force REVIEW and explain in the summary.
         score = None
         status = "REVIEW"
-        summary = ("Verification could not be completed — the AI model is "
-                   "experiencing high demand (503). All changed segments are "
-                   "listed below for manual review; please check them yourself "
-                   "before building the document.")
+        summary = ("Verification could not be completed — the AI model was "
+                   "overloaded (503) or the request was taking too long. All "
+                   "changed segments are listed below for manual review; please "
+                   "check them yourself before building the document.")
     elif score >= 90:
         summary = (f"Excellent — {score}/100. The corrected English is accurate, "
                    "natural, and aligned with FDA/EMA/ICH terminology.")
@@ -743,7 +766,12 @@ if __name__ == "__main__":
             output_path = sys.argv[idx + 1]
 
     if "--verify" in sys.argv:
-        report = verify_corrections(input_path, output_path)
+        verify_timeout = None
+        if "--verify-timeout" in sys.argv:
+            idx = sys.argv.index("--verify-timeout")
+            if idx + 1 < len(sys.argv):
+                verify_timeout = int(sys.argv[idx + 1])
+        report = verify_corrections(input_path, output_path, verify_timeout=verify_timeout)
         print(f"Correction verification: Score {report['score']}/100 — {report['status']}")
         print(f"  Checked: {report['total_checked']} pairs")
         print(f"  Issues: {report['issues_found']} ({report['warnings']} fail, {report['info']} review)")
