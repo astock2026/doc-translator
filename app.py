@@ -712,6 +712,7 @@ def insert():
         return resp
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
+        shutil.rmtree(str(output_dir), ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -1161,6 +1162,7 @@ def correct_apply():
         return resp
     finally:
         shutil.rmtree(str(work_dir), ignore_errors=True)
+        shutil.rmtree(str(output_dir), ignore_errors=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════
