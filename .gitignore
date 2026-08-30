@@ -9,3 +9,11 @@ __pycache__/
 *_translations.json
 validate_*.py
 doc_translator.db
+
+# Never commit document files
+*.docx
+*.doc
+*.pdf
+*.xlsx
+*.xls
+*.csv
