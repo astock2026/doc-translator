@@ -184,7 +184,40 @@ def paragraph_is_already_bilingual(para_elem):
     return has_chinese(full) and has_english(full)
 
 
-def make_english_run(eng_text, is_first=False):
+def _get_font_size_from_para(p_elem):
+    """Extract the font size (in half-points, as a string) from a paragraph.
+
+    Checks in priority order:
+      1. Direct run formatting (w:r/w:rPr/w:sz) — also looks inside <w:ins>
+         (Track Changes) containers via .iter()
+      2. Paragraph-level default run properties (w:pPr/w:rPr/w:sz)
+
+    Returns None if no explicit font size is found anywhere.
+    """
+    # Check all runs (including those inside w:ins / w:hyperlink)
+    for r in p_elem.iter(qn("w:r")):
+        rPr = r.find(qn("w:rPr"))
+        if rPr is not None:
+            sz = rPr.find(qn("w:sz"))
+            if sz is not None and sz.get(qn("w:val")):
+                return sz.get(qn("w:val"))
+    # Check paragraph-level run properties (style defaults)
+    pPr = p_elem.find(qn("w:pPr"))
+    if pPr is not None:
+        rPr = pPr.find(qn("w:rPr"))
+        if rPr is not None:
+            sz = rPr.find(qn("w:sz"))
+            if sz is not None and sz.get(qn("w:val")):
+                return sz.get(qn("w:val"))
+    return None
+
+
+def make_english_run(eng_text, is_first=False, font_size=None):
+    """Create run elements for English translation text.
+
+    *font_size* should be a string of half-points (e.g. "21" for 10.5pt,
+    "24" for 12pt). If None, it defaults to "21" (10.5pt).
+    """
     elements = []
     if not is_first:
         br = etree.Element(qn("w:br"))
@@ -197,10 +230,11 @@ def make_english_run(eng_text, is_first=False):
     rFonts.set(qn("w:ascii"), "Times New Roman")
     rFonts.set(qn("w:hAnsi"), "Times New Roman")
     rFonts.set(qn("w:eastAsia"), "Times New Roman")
+    sz_val = font_size or "21"
     sz = etree.SubElement(rPr, qn("w:sz"))
-    sz.set(qn("w:val"), "21")
+    sz.set(qn("w:val"), sz_val)
     szCs = etree.SubElement(rPr, qn("w:szCs"))
-    szCs.set(qn("w:val"), "21")
+    szCs.set(qn("w:val"), sz_val)
     i_elem = etree.SubElement(rPr, qn("w:i"))
     i_elem.set(qn("w:val"), "false")
     iCs = etree.SubElement(rPr, qn("w:iCs"))
@@ -268,7 +302,9 @@ def insert_translations_safe(input_path, translations_path, output_path):
             if translation_already_in_paragraph(p_elem, eng_text):
                 para_skipped += 1
                 continue
-            for elem in make_english_run(eng_text, is_first=(not all_text)):
+            # Extract font size from the Chinese text in this paragraph
+            font_sz = _get_font_size_from_para(p_elem)
+            for elem in make_english_run(eng_text, is_first=(not all_text), font_size=font_sz):
                 p_elem.append(elem)
             inserted += 1
 
@@ -316,7 +352,9 @@ def insert_translations_safe(input_path, translations_path, output_path):
                 existing_text = "".join(
                     t.text or "" for t in target_elem.findall(f".//{qn('w:t')}")
                 ).strip()
-                for elem in make_english_run(eng_text, is_first=(not existing_text)):
+                # Extract font size from the Chinese text in this cell paragraph
+                font_sz = _get_font_size_from_para(target_elem)
+                for elem in make_english_run(eng_text, is_first=(not existing_text), font_size=font_sz):
                     target_elem.append(elem)
                 if elem_path:
                     modified_paths.add(elem_path)
