@@ -53,16 +53,49 @@ FALLBACK_SCAN_FIRST = 5
 _LATIN_OR_DIGIT = re.compile(r"[A-Za-z0-9]")
 
 # Entity / institution name markers (company, org, university, regulator...)
+# Both Simplified and Traditional variants (Traditional-Chinese documents
+# from Taiwan/HK sites otherwise slip past this pre-filter entirely).
 _ENTITY_RE = re.compile(
-    r"公司|集团|股份|有限|制药|药业|生物|研究院|研究所|大学|学院|医院|"
-    r"委员会|协会|学会|疾控|药监|管理局|监管局|检测中心|认证中心|总局"
+    r"公司|集团|集團|股份|有限|制药|製藥|药业|藥業|生物|研究院|研究所|"
+    r"大学|大學|学院|學院|医院|醫院|"
+    r"委员会|委員會|协会|協會|学会|學會|疾控|药监|藥監|管理局|监管局|監管局|"
+    r"检测中心|檢測中心|认证中心|認證中心|总局|總局"
 )
 
 # Person-name position markers (approval / signature blocks)
+# Both Simplified and Traditional variants.
 _PERSON_RE = re.compile(
-    r"起草人|审核人|批准人|编制人|复核人|审定人|会签人|"
-    r"签名|负责人|联系人|姓名|经办人"
+    r"起草人|审核人|審核人|批准人|编制人|編制人|复核人|複核人|覆核人|审定人|審定人|"
+    r"会签人|會簽人|簽核人|"
+    r"签名|簽名|负责人|負責人|联系人|聯絡人|聯繫人|姓名|经办人|經辦人"
 )
+
+# CJK characters (for the short-segment rule below)
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+# Lone-name rule: signature/approval table cells often contain just a
+# person's name with no Latin letters and no marker word (especially in
+# Traditional-Chinese documents). Any short, mostly-CJK segment is cheap
+# to scan and highly likely to be a name/label cell. Person names are
+# 2-4 chars; with a short title (經理, 博士) 6 covers it.
+_SHORT_SEGMENT_MAX = 6
+
+# Common generic table-header / label cells (both scripts). These are
+# NOT proper nouns and are too frequent in SOP tables to warrant an LLM
+# scan. Whole-segment match only.
+_GENERIC_LABELS = {
+    # shared / both
+    "姓名", "日期", "编号", "編號", "备注", "備註", "版本", "序号", "序號",
+    "数量", "數量", "单位", "單位", "名称", "名稱", "签名", "簽名", "审核", "審核",
+    "批准", "日期", "标题", "標題", "内容", "內容", "项目", "項目", "部门", "部門",
+    "职责", "職責", "目的", "范围", "範圍", "附件", "定义", "定義",
+    # simplified-only common labels
+    "操作说明", "仓库管理", "文件编号", "文件名称", "修订历史", "参考文件",
+    "起草人", "审核人", "批准人", "生效日期", "现行版本", "替代版本",
+    # traditional-only common labels
+    "操作說明", "倉庫管理", "文件編號", "文件名稱", "修訂歷史", "參考文件",
+    "起草人", "審核人", "批准人", "生效日期", "現行版本", "替代版本",
+}
 
 
 def _should_scan(cn):
@@ -73,6 +106,10 @@ def _should_scan(cn):
     if _LATIN_OR_DIGIT.search(cn):
         return True
     if _ENTITY_RE.search(cn) or _PERSON_RE.search(cn):
+        return True
+    # Lone-name rule: short mostly-CJK segments (e.g. "鄭安惇" in a
+    # signature cell) get scanned — cheap and catches names with no markers.
+    if len(cn) <= _SHORT_SEGMENT_MAX and _CJK_RE.search(cn) and cn not in _GENERIC_LABELS:
         return True
     return False
 
