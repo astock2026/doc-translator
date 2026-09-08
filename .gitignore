@@ -18,6 +18,9 @@ doc_translator.db
 *.xls
 *.csv
 
-# Local-only diagnostic scripts (contain hardcoded paths)
+# Local-only diagnostic/asset scripts (contain hardcoded paths)
 scripts/check_redundant.py
+make_logo.py
+make_icon_logo.py
+process_qr.py
 validate_*.py
