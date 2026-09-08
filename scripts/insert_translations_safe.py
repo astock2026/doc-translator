@@ -188,6 +188,7 @@ def _get_font_size_from_style(styles_elem, style_id):
     """Look up a style by ID and find its font size, following w:basedOn chain.
 
     Returns the w:sz val as a string, or None if not found.
+    Checks both w:sz and w:szCs (the latter is commonly used for CJK text).
     """
     visited = set()
     current_id = style_id
@@ -205,6 +206,10 @@ def _get_font_size_from_style(styles_elem, style_id):
             sz = rPr.find(qn("w:sz"))
             if sz is not None and sz.get(qn("w:val")):
                 return sz.get(qn("w:val"))
+            # Fall back to w:szCs (complex-script size, often used for CJK)
+            szCs = rPr.find(qn("w:szCs"))
+            if szCs is not None and szCs.get(qn("w:val")):
+                return szCs.get(qn("w:val"))
         basedOn = style_elem.find(qn("w:basedOn"))
         if basedOn is not None:
             current_id = basedOn.get(qn("w:val"))
@@ -217,29 +222,41 @@ def _get_font_size_from_para(p_elem, styles_elem=None):
     """Extract the font size (in half-points, as a string) from a paragraph.
 
     Checks in priority order (matching Word's own resolution):
-      1. Direct run formatting (w:r/w:rPr/w:sz) — also looks inside <w:ins>
-         (Track Changes) containers via .iter()
-      2. Paragraph-level default run properties (w:pPr/w:rPr/w:sz)
+      1. Direct run formatting (w:r/w:rPr/w:sz or w:szCs) — also looks inside
+         <w:ins> (Track Changes) containers via .iter()
+      2. Paragraph-level default run properties (w:pPr/w:rPr/w:sz or w:szCs)
       3. Paragraph style chain (w:pStyle → styles.xml → w:basedOn parents)
-      4. Document defaults (w:docDefaults/w:rPrDefault/w:rPr/w:sz)
+      4. Default paragraph style (the style with w:default="1" w:type="paragraph")
+         following its w:basedOn chain
+      5. Document defaults (w:docDefaults/w:rPrDefault/w:rPr/w:sz or w:szCs)
 
     Returns None if no explicit font size is found anywhere.
     """
+    def _sz_from_rPr(rPr):
+        """Return font size from an rPr element, checking w:sz then w:szCs."""
+        if rPr is None:
+            return None
+        sz = rPr.find(qn("w:sz"))
+        if sz is not None and sz.get(qn("w:val")):
+            return sz.get(qn("w:val"))
+        szCs = rPr.find(qn("w:szCs"))
+        if szCs is not None and szCs.get(qn("w:val")):
+            return szCs.get(qn("w:val"))
+        return None
+
     # 1. Check all runs (including those inside w:ins / w:hyperlink)
     for r in p_elem.iter(qn("w:r")):
         rPr = r.find(qn("w:rPr"))
-        if rPr is not None:
-            sz = rPr.find(qn("w:sz"))
-            if sz is not None and sz.get(qn("w:val")):
-                return sz.get(qn("w:val"))
+        sz_val = _sz_from_rPr(rPr)
+        if sz_val is not None:
+            return sz_val
     # 2. Check paragraph-level run properties (direct on paragraph)
     pPr = p_elem.find(qn("w:pPr"))
     if pPr is not None:
         rPr = pPr.find(qn("w:rPr"))
-        if rPr is not None:
-            sz = rPr.find(qn("w:sz"))
-            if sz is not None and sz.get(qn("w:val")):
-                return sz.get(qn("w:val"))
+        sz_val = _sz_from_rPr(rPr)
+        if sz_val is not None:
+            return sz_val
     # 3. Check paragraph style chain
     if styles_elem is not None and pPr is not None:
         pStyle = pPr.find(qn("w:pStyle"))
@@ -248,17 +265,26 @@ def _get_font_size_from_para(p_elem, styles_elem=None):
             sz = _get_font_size_from_style(styles_elem, style_id)
             if sz is not None:
                 return sz
-    # 4. Check document defaults
+    # 4. Check default paragraph style (w:default="1" w:type="paragraph")
+    if styles_elem is not None:
+        for style in styles_elem.findall(qn("w:style")):
+            if (style.get(qn("w:type")) == "paragraph"
+                    and style.get(qn("w:default")) == "1"):
+                style_id = style.get(qn("w:styleId"))
+                sz = _get_font_size_from_style(styles_elem, style_id)
+                if sz is not None:
+                    return sz
+                break
+    # 5. Check document defaults
     if styles_elem is not None:
         docDefaults = styles_elem.find(qn("w:docDefaults"))
         if docDefaults is not None:
             rPrDefault = docDefaults.find(qn("w:rPrDefault"))
             if rPrDefault is not None:
                 rPr = rPrDefault.find(qn("w:rPr"))
-                if rPr is not None:
-                    sz = rPr.find(qn("w:sz"))
-                    if sz is not None and sz.get(qn("w:val")):
-                        return sz.get(qn("w:val"))
+                sz_val = _sz_from_rPr(rPr)
+                if sz_val is not None:
+                    return sz_val
     return None
 
 
