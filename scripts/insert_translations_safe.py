@@ -47,7 +47,10 @@ def _has_chinese_sentence_markers(text):
     cn_chars = ''.join(c for c in text if ord(c) > 0x4e00)
     if len(cn_chars) < 3:
         return False  # Single word like "目的" — characters are lexical, not grammatical
-    markers = set('的得了在是等中为向将于对以可所从因此如被把让给到由按根据通过由于为了及其以上以下')
+    markers = set(
+        '的得了在是等中为向将于对以可所从因此如被把让给到由按根据通过由于为了及其以上以下'
+        '之係與们让给从为于并将该内后时吗呢麼裡'
+    )
     return bool(markers & set(cn_chars))
 
 
