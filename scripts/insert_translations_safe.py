@@ -184,24 +184,55 @@ def paragraph_is_already_bilingual(para_elem):
     return has_chinese(full) and has_english(full)
 
 
-def _get_font_size_from_para(p_elem):
+def _get_font_size_from_style(styles_elem, style_id):
+    """Look up a style by ID and find its font size, following w:basedOn chain.
+
+    Returns the w:sz val as a string, or None if not found.
+    """
+    visited = set()
+    current_id = style_id
+    while current_id and current_id not in visited:
+        visited.add(current_id)
+        style_elem = None
+        for style in styles_elem.findall(qn("w:style")):
+            if style.get(qn("w:styleId")) == current_id:
+                style_elem = style
+                break
+        if style_elem is None:
+            break
+        rPr = style_elem.find(qn("w:rPr"))
+        if rPr is not None:
+            sz = rPr.find(qn("w:sz"))
+            if sz is not None and sz.get(qn("w:val")):
+                return sz.get(qn("w:val"))
+        basedOn = style_elem.find(qn("w:basedOn"))
+        if basedOn is not None:
+            current_id = basedOn.get(qn("w:val"))
+        else:
+            break
+    return None
+
+
+def _get_font_size_from_para(p_elem, styles_elem=None):
     """Extract the font size (in half-points, as a string) from a paragraph.
 
-    Checks in priority order:
+    Checks in priority order (matching Word's own resolution):
       1. Direct run formatting (w:r/w:rPr/w:sz) — also looks inside <w:ins>
          (Track Changes) containers via .iter()
       2. Paragraph-level default run properties (w:pPr/w:rPr/w:sz)
+      3. Paragraph style chain (w:pStyle → styles.xml → w:basedOn parents)
+      4. Document defaults (w:docDefaults/w:rPrDefault/w:rPr/w:sz)
 
     Returns None if no explicit font size is found anywhere.
     """
-    # Check all runs (including those inside w:ins / w:hyperlink)
+    # 1. Check all runs (including those inside w:ins / w:hyperlink)
     for r in p_elem.iter(qn("w:r")):
         rPr = r.find(qn("w:rPr"))
         if rPr is not None:
             sz = rPr.find(qn("w:sz"))
             if sz is not None and sz.get(qn("w:val")):
                 return sz.get(qn("w:val"))
-    # Check paragraph-level run properties (style defaults)
+    # 2. Check paragraph-level run properties (direct on paragraph)
     pPr = p_elem.find(qn("w:pPr"))
     if pPr is not None:
         rPr = pPr.find(qn("w:rPr"))
@@ -209,6 +240,25 @@ def _get_font_size_from_para(p_elem):
             sz = rPr.find(qn("w:sz"))
             if sz is not None and sz.get(qn("w:val")):
                 return sz.get(qn("w:val"))
+    # 3. Check paragraph style chain
+    if styles_elem is not None and pPr is not None:
+        pStyle = pPr.find(qn("w:pStyle"))
+        if pStyle is not None:
+            style_id = pStyle.get(qn("w:val"))
+            sz = _get_font_size_from_style(styles_elem, style_id)
+            if sz is not None:
+                return sz
+    # 4. Check document defaults
+    if styles_elem is not None:
+        docDefaults = styles_elem.find(qn("w:docDefaults"))
+        if docDefaults is not None:
+            rPrDefault = docDefaults.find(qn("w:rPrDefault"))
+            if rPrDefault is not None:
+                rPr = rPrDefault.find(qn("w:rPr"))
+                if rPr is not None:
+                    sz = rPr.find(qn("w:sz"))
+                    if sz is not None and sz.get(qn("w:val")):
+                        return sz.get(qn("w:val"))
     return None
 
 
@@ -257,6 +307,8 @@ def get_element_path(elem, tree):
 def insert_translations_safe(input_path, translations_path, output_path):
     doc = docx.Document(input_path)
     tree = doc.element.getroottree()
+    # Extract the styles element for font-size resolution from style chain
+    styles_elem = doc.styles.element
 
     with open(translations_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -303,7 +355,7 @@ def insert_translations_safe(input_path, translations_path, output_path):
                 para_skipped += 1
                 continue
             # Extract font size from the Chinese text in this paragraph
-            font_sz = _get_font_size_from_para(p_elem)
+            font_sz = _get_font_size_from_para(p_elem, styles_elem)
             for elem in make_english_run(eng_text, is_first=(not all_text), font_size=font_sz):
                 p_elem.append(elem)
             inserted += 1
@@ -353,7 +405,7 @@ def insert_translations_safe(input_path, translations_path, output_path):
                     t.text or "" for t in target_elem.findall(f".//{qn('w:t')}")
                 ).strip()
                 # Extract font size from the Chinese text in this cell paragraph
-                font_sz = _get_font_size_from_para(target_elem)
+                font_sz = _get_font_size_from_para(target_elem, styles_elem)
                 for elem in make_english_run(eng_text, is_first=(not existing_text), font_size=font_sz):
                     target_elem.append(elem)
                 if elem_path:
