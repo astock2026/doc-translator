@@ -17,3 +17,7 @@ doc_translator.db
 *.xlsx
 *.xls
 *.csv
+
+# Local-only diagnostic scripts (contain hardcoded paths)
+scripts/check_redundant.py
+validate_*.py
